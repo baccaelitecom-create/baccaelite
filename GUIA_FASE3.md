@@ -6,7 +6,7 @@ Tu proyecto **Fase 3** está listo con:
 
 ### **1. CAPTCHA (hCaptcha)** ✅
 - Site Key: `7e8abaf0-b192-4b9e-84a6-2b768252d590`
-- Secret Key: `ES_5d85e37db05148f89fb7ce85714dd753`
+- Secret Key: `REEMPLAZA_CON_TU_SECRET_KEY`
 - Validación en backend
 - UI en frontend
 
