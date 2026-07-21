@@ -226,10 +226,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- ARCHIVOS ESTÁTICOS --- */
+  /* --- ARCHIVOS ESTÁTICOS (en la raíz, no en carpeta public/) --- */
   function serveStatic(file) {
-    const p = path.join(ROOT, 'public', file);
-    if (!p.startsWith(path.join(ROOT, 'public'))) { res.writeHead(403); res.end(); return; }
+    const p = path.join(ROOT, file);
+    if (!p.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
     fs.readFile(p, (err, data) => {
       if (err) { res.writeHead(404); res.end(); return; }
       const ext = path.extname(p).toLowerCase();
@@ -250,6 +250,7 @@ const server = http.createServer((req, res) => {
   if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/images\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/img\//)) { serveStatic(pathname.slice(1)); return; }
 
   res.writeHead(404);
