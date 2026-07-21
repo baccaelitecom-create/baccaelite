@@ -1,9 +1,9 @@
 /* ==========================================================================
-   BACCA-AUTO — SERVIDOR FINAL FASE 3
-   - Gmail REAL para email verification
+   BACCA-AUTO — SERVIDOR CON SQLITE
+   - SQLite para persistencia real de datos
+   - Gmail para email verification  
    - hCaptcha en registro
    - Rate limiting en login
-   - Economía completa + Chat + Mesas + Torneos
    ========================================================================== */
 
 'use strict';
@@ -14,6 +14,10 @@ const path   = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const nodemailer = require('nodemailer');
+const {
+  initDB, getUser, saveUser, getAllUsers, userExists,
+  countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken
+} = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
@@ -84,30 +88,12 @@ function getClientIp(req) {
 }
 
 /* =======================================================================
-   DATA
+   DATA - SQLite (persistencia real)
    ======================================================================= */
-const DATA_DIR      = path.join(ROOT, 'data');
-const USERS_FILE    = path.join(DATA_DIR, 'users.json');
-const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
-const VERIFY_TOKENS_FILE = path.join(DATA_DIR, 'verify_tokens.json');
-
-const SESSION_DAYS  = 30;
-const SESSION_MS    = SESSION_DAYS * 24 * 60 * 60 * 1000;
-const COOKIE_NAME   = 'bacca_sid';
-
-const auth = { users: {}, sessions: {}, verifyTokens: {} };
-
-function loadJSON(file, fallback){
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
-}
-function saveJSON(file, obj){
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(obj, null, 2));
-}
-
-auth.users       = loadJSON(USERS_FILE, {});
-auth.sessions    = loadJSON(SESSIONS_FILE, {});
-auth.verifyTokens = loadJSON(VERIFY_TOKENS_FILE, {});
+const SESSION_DAYS = 30;
+const SESSION_MS   = SESSION_DAYS * 24 * 60 * 60 * 1000;
+const COOKIE_NAME  = 'bacca_sid';
+const sessions     = {};
 
 /* =======================================================================
    ECONOMÍA
@@ -142,11 +128,7 @@ function ensureEconomy(u){
   return changed;
 }
 
-{ 
-  let migrated = false;
-  for (const u of Object.values(auth.users)) if (ensureEconomy(u)) migrated = true;
-  if (migrated) saveJSON(USERS_FILE, auth.users);
-}
+// Migración manejada en db.js
 
 function publicState(u){
   return {
@@ -179,15 +161,10 @@ function applyHandToAccount(u, b, winner){
 
 function sessionAccount(req){
   const token = parseCookies(req)[COOKIE_NAME];
-  const s = token && auth.sessions[token];
+  const s = token && sessions[token];
   if (!s || Date.now() - s.ts > SESSION_MS) return null;
-  return auth.users[s.key] || null;
+  return getUser(s.key) || null;
 }
-
-for (const [tok, s] of Object.entries(auth.sessions)) {
-  if (Date.now() - s.ts > SESSION_MS) delete auth.sessions[tok];
-}
-saveJSON(SESSIONS_FILE, auth.sessions);
 
 /* =======================================================================
    AUTH
@@ -224,8 +201,7 @@ function checkPass(user, pass){
 
 function createSession(key){
   const token = crypto.randomBytes(32).toString('hex');
-  auth.sessions[token] = { key, ts: Date.now() };
-  saveJSON(SESSIONS_FILE, auth.sessions);
+  sessions[token] = { key, ts: Date.now() };
   return token;
 }
 
@@ -284,30 +260,28 @@ const server = http.createServer((req, res) => {
         }
 
         const key = email.toLowerCase();
-        if (auth.users[key]) {
+        if (userExists(key)) {
           res.writeHead(400);
           res.end(JSON.stringify({error:'Cuenta ya existe'}));
           return;
         }
 
-        const role = Object.keys(auth.users).length === 0 ? 'admin' : 'user';
+        const role = countUsers() === 0 ? 'admin' : 'user';
         const user = makeUser(name, email, pass, role);
-        auth.users[key] = user;
+        saveUser(key, user);
         
         const verifyToken = crypto.randomBytes(32).toString('hex');
-        auth.verifyTokens[verifyToken] = { email: key, expiresAt: Date.now() + 86400000 };
-        
-        saveJSON(USERS_FILE, auth.users);
-        saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
+        saveVerifyToken(verifyToken, key, Date.now() + 86400000);
+
+        const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${verifyToken}`;
 
         sendVerificationEmail(email, verifyToken).then(sent => {
-          if (sent) {
-            res.writeHead(200);
-            res.end(JSON.stringify({ ok: true, message: 'Email enviado. Verifica tu bandeja.' }));
-          } else {
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: 'Error enviando email' }));
-          }
+          res.writeHead(200);
+          res.end(JSON.stringify({ 
+            ok: true, 
+            message: sent ? 'Email enviado. Verifica tu bandeja.' : 'Cuenta creada. Verifica con este link:',
+            verifyUrl: sent ? null : verifyUrl
+          }));
         });
       } catch (e) {
         res.writeHead(400);
@@ -324,22 +298,21 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const { token } = JSON.parse(body);
-        const verifyData = auth.verifyTokens[token];
+        const verifyData = getVerifyToken(token);
         
-        if (!verifyData || Date.now() > verifyData.expiresAt) {
+        if (!verifyData || Date.now() > verifyData.expires_at) {
           res.writeHead(400);
           res.end(JSON.stringify({error:'Token inválido'}));
           return;
         }
 
-        const user = auth.users[verifyData.email];
+        const user = getUser(verifyData.email_key);
         if (user) {
           user.emailVerified = true;
-          saveJSON(USERS_FILE, auth.users);
+          saveUser(verifyData.email_key, user);
         }
 
-        delete auth.verifyTokens[token];
-        saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
+        deleteVerifyToken(token);
 
         res.writeHead(200);
         res.end(JSON.stringify({ok: true}));
@@ -371,7 +344,7 @@ const server = http.createServer((req, res) => {
         }
 
         const key = email.toLowerCase();
-        const u = auth.users[key];
+        const u = getUser(key);
         
         if (!u || !checkPass(u, pass)) {
           res.writeHead(401);
@@ -461,9 +434,9 @@ const chat = { messages: [] };
 function sessionUser(req){
   const cookies = parseCookies(req);
   const token = cookies[COOKIE_NAME];
-  const s = token && auth.sessions[token];
+  const s = token && sessions[token];
   if (!s || Date.now() - s.ts > SESSION_MS) return null;
-  const u = auth.users[s.key];
+  const u = getUser(s.key);
   return u ? { name: u.name, role: u.role } : null;
 }
 
@@ -564,10 +537,10 @@ function tableResolve(t) {
   let winner = pVal > bVal ? 'PLAYER' : bVal > pVal ? 'BANKER' : 'TIE';
   t.results.push(winner);
   t.clients.forEach(c => {
-    const u = auth.users[c.accKey];
+    const u = getUser(c.accKey);
     if (u && c.tableBets.PLAYER + c.tableBets.BANKER + c.tableBets.TIE > 0) {
       const result = applyHandToAccount(u, c.tableBets, winner);
-      saveJSON(USERS_FILE, auth.users);
+      saveUser(c.accKey, u);
       tSend(c, { t: 'result', winner, result });
     }
     c.tableBets = { PLAYER: 0, BANKER: 0, TIE: 0 };
@@ -603,7 +576,7 @@ twss.on('connection', (ws, req) => {
   tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size });
   if (t.phase === 'sleeping') { tableBetting(t); }
   ws.on('message', raw => {
-    try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const u = auth.users[ws.accKey]; if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } } catch (e) { }
+    try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const u = getUser(ws.accKey); if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } } catch (e) { }
   });
   ws.on('close', () => { t.clients.delete(ws); tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size }); if (t.clients.size === 0) tableSleep(t); });
 });
@@ -611,15 +584,19 @@ twss.on('connection', (ws, req) => {
 /* =======================================================================
    INICIO
    ======================================================================= */
-server.listen(PORT, () => {
-  const nUsers = Object.keys(auth.users).length;
-  console.log('==========================================');
-  console.log('  BACCA-AUTO — FASE 3 FINAL');
-  console.log(`  Puerto: ${PORT}`);
-  console.log(`  URL: https://baccaelite-production.up.railway.app`);
-  console.log(nUsers === 0
-    ? '  Sin cuentas → la PRIMERA será ADMIN.'
-    : `  Cuentas: ${nUsers}`);
-  console.log('  Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta configurar'));
-  console.log('==========================================');
+const { initDB } = require('./db');
+
+initDB().then(() => {
+  server.listen(PORT, () => {
+    const nUsers = countUsers();
+    console.log('==========================================');
+    console.log('  BACCA-AUTO — SQLite + Fase 3');
+    console.log(`  Puerto: ${PORT}`);
+    console.log(`  URL: https://baccaelite-production.up.railway.app`);
+    console.log(nUsers === 0
+      ? '  Sin cuentas → la PRIMERA será ADMIN.'
+      : `  Cuentas en SQLite: ${nUsers}`);
+    console.log('  Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta'));
+    console.log('==========================================');
+  });
 });
