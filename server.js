@@ -300,17 +300,14 @@ const server = http.createServer((req, res) => {
         saveJSON(USERS_FILE, auth.users);
         saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
 
-        const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${verifyToken}`;
-        
         sendVerificationEmail(email, verifyToken).then(sent => {
-          res.writeHead(200);
-          res.end(JSON.stringify({ 
-            ok: true, 
-            message: sent 
-              ? 'Email enviado. Verifica tu bandeja de entrada.' 
-              : 'Cuenta creada. Usa este link para verificar:',
-            verifyUrl: sent ? null : verifyUrl
-          }));
+          if (sent) {
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, message: 'Email enviado. Verifica tu bandeja.' }));
+          } else {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: 'Error enviando email' }));
+          }
         });
       } catch (e) {
         res.writeHead(400);
@@ -382,11 +379,12 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        if (!u.emailVerified) {
-          res.writeHead(403);
-          res.end(JSON.stringify({error:'Email no verificado'}));
-          return;
-        }
+        // Email verification temporalmente desactivado
+        // if (!u.emailVerified) {
+        //   res.writeHead(403);
+        //   res.end(JSON.stringify({error:'Email no verificado'}));
+        //   return;
+        // }
 
         const token = createSession(key);
         res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; SameSite=Lax` });
