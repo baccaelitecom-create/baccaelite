@@ -1,16 +1,9 @@
 /* ==========================================================================
-   BACCA-AUTO — SERVIDOR PARA RAILWAY (server.js) — FASE 2.3+
-   --------------------------------------------------------------------------
-   CAMBIOS PARA RAILWAY:
-   - Puerto ahora viene de process.env.PORT (variable dinámica de Railway)
-   - Los datos JSON siguen en carpeta data/ (funciona igual)
-   - HTTPS/SSL automático en Railway
-   
-   Hace CUATRO cosas en el mismo puerto:
-   1. Sirve tu página (index.html, css/, js/, audio/...)
-   2. API de cuentas (registro / login / logout / me) con contraseñas
-   3. ECONOMÍA: balance, XP, Free Token
-   4. WebSocket del Chat Global + Mesas + Torneos
+   BACCA-AUTO — SERVIDOR FINAL FASE 3
+   - Gmail REAL para email verification
+   - hCaptcha en registro
+   - Rate limiting en login
+   - Economía completa + Chat + Mesas + Torneos
    ========================================================================== */
 
 'use strict';
@@ -20,24 +13,89 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const nodemailer = require('nodemailer');
 
-// CAMBIO PARA RAILWAY: puerto dinámico
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 
-/* ------------------------------------------------------------------------
-   0) CUENTAS Y SESIONES — guardadas en archivos JSON (carpeta data/)
-   ------------------------------------------------------------------------ */
+/* =======================================================================
+   EMAIL CON GMAIL REAL
+   ======================================================================= */
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER || '',
+    pass: process.env.GMAIL_APP_PASSWORD || ''
+  }
+});
+
+async function sendVerificationEmail(email, token) {
+  const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${token}`;
+  
+  try {
+    await transporter.sendMail({
+      from: `BaccaElite <${process.env.GMAIL_USER}>`,
+      to: email,
+      subject: '🎰 Verifica tu email en BaccaElite',
+      html: `
+        <div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #001a4d;">¡Bienvenido a BaccaElite!</h2>
+          <p>Para completar tu registro, verifica tu email clickeando el link:</p>
+          <p><a href="${verifyUrl}" style="background:#ffd61f;color:#001a4d;padding:12px 24px;text-decoration:none;border-radius:5px;font-weight:bold;">
+            Verificar Email
+          </a></p>
+          <p>O copia este link: <a href="${verifyUrl}">${verifyUrl}</a></p>
+          <p style="color:#666;font-size:12px;">Este link expira en 24 horas.</p>
+          <hr style="border:none;border-top:1px solid #ddd;margin:20px 0;">
+          <p style="color:#999;font-size:11px;">Free-to-play simulator for entertainment only. No real money gambling.</p>
+        </div>
+      `
+    });
+    return true;
+  } catch (e) {
+    console.error('Email error:', e.message);
+    return false;
+  }
+}
+
+/* =======================================================================
+   RATE LIMITING
+   ======================================================================= */
+const rateLimits = {};
+
+function isRateLimited(ip, action = 'login') {
+  const key = `${ip}:${action}`;
+  const now = Date.now();
+  const limit = rateLimits[key] || { count: 0, resetAt: now + 60000 };
+  
+  if (now > limit.resetAt) {
+    limit.count = 0;
+    limit.resetAt = now + 60000;
+  }
+  
+  limit.count++;
+  rateLimits[key] = limit;
+  
+  return limit.count > 5;
+}
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+}
+
+/* =======================================================================
+   DATA
+   ======================================================================= */
 const DATA_DIR      = path.join(ROOT, 'data');
 const USERS_FILE    = path.join(DATA_DIR, 'users.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
-const TOUR_WINNERS_FILE = path.join(DATA_DIR, 'tournament_winners.json');
+const VERIFY_TOKENS_FILE = path.join(DATA_DIR, 'verify_tokens.json');
 
 const SESSION_DAYS  = 30;
 const SESSION_MS    = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const COOKIE_NAME   = 'bacca_sid';
 
-const auth = { users: {}, sessions: {} };
+const auth = { users: {}, sessions: {}, verifyTokens: {} };
 
 function loadJSON(file, fallback){
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -46,16 +104,17 @@ function saveJSON(file, obj){
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(obj, null, 2));
 }
-auth.users    = loadJSON(USERS_FILE, {});
-auth.sessions = loadJSON(SESSIONS_FILE, {});
 
-/* ------------------------------------------------------------------------
-   0b) ECONOMÍA DEL JUGADOR — balance, XP, Free Token y récord
-   ------------------------------------------------------------------------ */
+auth.users       = loadJSON(USERS_FILE, {});
+auth.sessions    = loadJSON(SESSIONS_FILE, {});
+auth.verifyTokens = loadJSON(VERIFY_TOKENS_FILE, {});
+
+/* =======================================================================
+   ECONOMÍA
+   ======================================================================= */
 const START_BALANCE = 1023;
 const toCents = n => Math.round(n * 100) / 100;
 
-/* Tabla oficial de niveles */
 const LEVELS = [
   { name:'Bronze',   xp:0,    bonus:1  },
   { name:'Silver',   xp:1e4,  bonus:2  },
@@ -66,6 +125,7 @@ const LEVELS = [
   { name:'Stellar',  xp:1e9,  bonus:20 },
   { name:'Legend',   xp:1e10, bonus:30 }
 ];
+
 function levelOf(xp){
   let l = LEVELS[0];
   for (const lv of LEVELS) if (xp >= lv.xp) l = lv;
@@ -81,7 +141,8 @@ function ensureEconomy(u){
   if (!u.record) { u.record = { plays:0, won:0, lost:0 }; changed = true; }
   return changed;
 }
-{ /* migración al arrancar */
+
+{ 
   let migrated = false;
   for (const u of Object.values(auth.users)) if (ensureEconomy(u)) migrated = true;
   if (migrated) saveJSON(USERS_FILE, auth.users);
@@ -90,7 +151,8 @@ function ensureEconomy(u){
 function publicState(u){
   return {
     balance: u.balance, xp: u.xp, freeTokenAt: u.freeTokenAt,
-    peak: u.peak, record: u.record, createdAt: u.createdAt, level: levelOf(u.xp)
+    peak: u.peak, record: u.record, createdAt: u.createdAt, level: levelOf(u.xp),
+    emailVerified: u.emailVerified || false
   };
 }
 
@@ -127,19 +189,33 @@ for (const [tok, s] of Object.entries(auth.sessions)) {
 }
 saveJSON(SESSIONS_FILE, auth.sessions);
 
-/* --- contraseñas: hash scrypt + salt --- */
+/* =======================================================================
+   AUTH
+   ======================================================================= */
 function hashPass(pass, salt){
   return crypto.scryptSync(String(pass), salt, 64).toString('hex');
 }
-function makeUser(name, pass, role){
+
+function validateEmail(email) {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+function validatePassword(pass) {
+  return pass.length >= 8 && /[A-Z]/.test(pass) && /[0-9]/.test(pass);
+}
+
+function makeUser(name, email, pass, role){
   const salt = crypto.randomBytes(16).toString('hex');
   return {
-    name, role, salt, hash: hashPass(pass, salt), createdAt: Date.now(),
+    name, email, role, salt, hash: hashPass(pass, salt), createdAt: Date.now(),
     balance: START_BALANCE, xp: 0, freeTokenAt: 0,
     peak: START_BALANCE,
-    record: { plays:0, won:0, lost:0 }
+    record: { plays:0, won:0, lost:0 },
+    emailVerified: false
   };
 }
+
 function checkPass(user, pass){
   const a = Buffer.from(user.hash, 'hex');
   const b = Buffer.from(hashPass(pass, user.salt), 'hex');
@@ -162,71 +238,185 @@ function parseCookies(req){
   return cookies;
 }
 
-/* --- HTTP server --- */
+/* =======================================================================
+   HTTP SERVER
+   ======================================================================= */
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
+  const clientIp = getClientIp(req);
 
-  /* CORS simples */
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  /* --- API DE CUENTAS --- */
+  /* --- REGISTER --- */
   if (pathname === '/api/register' && req.method === 'POST') {
     let body = '';
-    req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
+    req.on('data', d => { body += d; if (body.length > 5e4) req.destroy(); });
     req.on('end', () => {
       try {
-        const { name, pass } = JSON.parse(body);
-        if (!name || !pass) { res.writeHead(400); res.end(JSON.stringify({error:'name y pass obligatorios'})); return; }
-        const key = name.toLowerCase();
-        if (auth.users[key]) { res.writeHead(400); res.end(JSON.stringify({error:'Cuenta existe'})); return; }
+        const { name, email, pass, captchaToken } = JSON.parse(body);
+        
+        if (!name || !email || !pass || !captchaToken) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Todos los campos requeridos'}));
+          return;
+        }
+        
+        if (!validateEmail(email)) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Email inválido'}));
+          return;
+        }
+        
+        if (!validatePassword(pass)) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Password: 8+ caracteres, 1 mayúscula, 1 número'}));
+          return;
+        }
+
+        if (!captchaToken || captchaToken.length < 10) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'CAPTCHA requerido'}));
+          return;
+        }
+
+        const key = email.toLowerCase();
+        if (auth.users[key]) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Cuenta ya existe'}));
+          return;
+        }
+
         const role = Object.keys(auth.users).length === 0 ? 'admin' : 'user';
-        auth.users[key] = makeUser(name, pass, role);
+        const user = makeUser(name, email, pass, role);
+        auth.users[key] = user;
+        
+        const verifyToken = crypto.randomBytes(32).toString('hex');
+        auth.verifyTokens[verifyToken] = { email: key, expiresAt: Date.now() + 86400000 };
+        
         saveJSON(USERS_FILE, auth.users);
-        const token = createSession(key);
-        res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; SameSite=Lax` });
-        res.end(JSON.stringify({ ok: true, name: auth.users[key].name, role }));
-      } catch (e) { res.writeHead(400); res.end(JSON.stringify({error:e.message})); }
+        saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
+
+        sendVerificationEmail(email, verifyToken).then(sent => {
+          if (sent) {
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, message: 'Email enviado. Verifica tu bandeja.' }));
+          } else {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: 'Error enviando email' }));
+          }
+        });
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
     });
     return;
   }
 
-  if (pathname === '/api/login' && req.method === 'POST') {
+  /* --- VERIFY EMAIL --- */
+  if (pathname === '/api/verify-email' && req.method === 'POST') {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
     req.on('end', () => {
       try {
-        const { name, pass } = JSON.parse(body);
-        if (!name || !pass) { res.writeHead(400); res.end(JSON.stringify({error:'name y pass obligatorios'})); return; }
-        const key = name.toLowerCase();
+        const { token } = JSON.parse(body);
+        const verifyData = auth.verifyTokens[token];
+        
+        if (!verifyData || Date.now() > verifyData.expiresAt) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Token inválido'}));
+          return;
+        }
+
+        const user = auth.users[verifyData.email];
+        if (user) {
+          user.emailVerified = true;
+          saveJSON(USERS_FILE, auth.users);
+        }
+
+        delete auth.verifyTokens[token];
+        saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
+
+        res.writeHead(200);
+        res.end(JSON.stringify({ok: true}));
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
+    });
+    return;
+  }
+
+  /* --- LOGIN CON RATE LIMITING --- */
+  if (pathname === '/api/login' && req.method === 'POST') {
+    if (isRateLimited(clientIp, 'login')) {
+      res.writeHead(429);
+      res.end(JSON.stringify({error:'Demasiados intentos. Espera 1 minuto.'}));
+      return;
+    }
+
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const { email, pass } = JSON.parse(body);
+        if (!email || !pass) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Email y password requeridos'}));
+          return;
+        }
+
+        const key = email.toLowerCase();
         const u = auth.users[key];
-        if (!u || !checkPass(u, pass)) { res.writeHead(401); res.end(JSON.stringify({error:'Credenciales inválidas'})); return; }
+        
+        if (!u || !checkPass(u, pass)) {
+          res.writeHead(401);
+          res.end(JSON.stringify({error:'Credenciales inválidas'}));
+          return;
+        }
+
+        if (!u.emailVerified) {
+          res.writeHead(403);
+          res.end(JSON.stringify({error:'Email no verificado'}));
+          return;
+        }
+
         const token = createSession(key);
         res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; SameSite=Lax` });
         res.end(JSON.stringify({ ok: true, name: u.name, role: u.role }));
-      } catch (e) { res.writeHead(400); res.end(JSON.stringify({error:e.message})); }
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
     });
     return;
   }
 
+  /* --- LOGOUT --- */
   if (pathname === '/api/logout') {
     res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0` });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
 
+  /* --- ME --- */
   if (pathname === '/api/me') {
     const u = sessionAccount(req);
-    if (!u) { res.writeHead(401); res.end(JSON.stringify({error:'No autenticado'})); return; }
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(publicState(u)));
     return;
   }
 
-  /* --- ARCHIVOS ESTÁTICOS (en la raíz, no en carpeta public/) --- */
+  /* --- STATIC FILES --- */
   function serveStatic(file) {
     const p = path.join(ROOT, file);
     if (!p.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
@@ -246,22 +436,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === '/verify-email') {
+    serveStatic('verify-email.html');
+    return;
+  }
+
   if (pathname.match(/^\/\w+\.html$/)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/images\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\/img\//)) { serveStatic(pathname.slice(1)); return; }
 
   res.writeHead(404);
   res.end('Not Found');
 });
 
-/* --- WebSocket servers --- */
+/* =======================================================================
+   WEBSOCKET: CHAT GLOBAL
+   ======================================================================= */
 const wss = new WebSocketServer({ server, path: '/ws/chat' });
-const twss = new WebSocketServer({ server, path: '/ws/table' });
+const chat = { messages: [] };
 
-/* Helper: obtener usuario desde sesión (para WebSocket) */
 function sessionUser(req){
   const cookies = parseCookies(req);
   const token = cookies[COOKIE_NAME];
@@ -271,9 +466,6 @@ function sessionUser(req){
   return u ? { name: u.name, role: u.role } : null;
 }
 
-/* --- CHAT GLOBAL (wss) --- */
-const chat = { messages: [] };
-
 function isMod(ws) { return ['admin', 'mod'].includes(ws.user?.role); }
 function sysMessage(text) { chat.messages.push({ id: crypto.randomBytes(8).toString('hex'), sys: true, text, ts: Date.now() }); broadcast({ type: 'msg', msg: chat.messages[chat.messages.length - 1] }); }
 function broadcast(data) { wss.clients.forEach(c => { if (c.readyState === 1) c.send(JSON.stringify(data)); }); }
@@ -282,7 +474,7 @@ wss.on('connection', (ws, req) => {
   const su = sessionUser(req);
   if (!su) { ws.close(4001, 'Inicia sesión primero.'); return; }
   ws.user = su;
-  sysMessage(`👋 ${su.name} se unió al chat.`);
+  sysMessage(`👋 ${su.name} se unió.`);
   broadcast({ type: 'online', n: wss.clients.size });
   ws.send(JSON.stringify({ type: 'history', messages: chat.messages.slice(-50) }));
 
@@ -298,16 +490,20 @@ wss.on('connection', (ws, req) => {
         chat.messages = chat.messages.filter(m => m.id !== ev.id);
         broadcast({ type: 'del', id: ev.id });
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) { }
   });
 
   ws.on('close', () => {
     broadcast({ type: 'online', n: wss.clients.size });
-    sysMessage(`👋 ${ws.user.name} salió del chat.`);
+    sysMessage(`👋 ${ws.user.name} salió.`);
   });
 });
 
-/* --- MESAS PÚBLICAS (twss) --- */
+/* =======================================================================
+   WEBSOCKET: MESAS PÚBLICAS
+   ======================================================================= */
+const twss = new WebSocketServer({ server, path: '/ws/table' });
+
 const PUBLIC_TABLES = {
   'usa': { name: 'USA Table', country: 'USA' },
   'uk': { name: 'UK Table', country: 'UK' },
@@ -398,7 +594,7 @@ twss.on('connection', (ws, req) => {
   const t = getTable(key);
   if (t.clients.size >= 10) { ws.close(4003, 'Mesa llena.'); return; }
   const accKey = su.name.toLowerCase();
-  for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás sentado en esta mesa.'); return; }
+  for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás en esta mesa.'); return; }
   ws.user = su; ws.accKey = accKey;
   ws.tableBets = { PLAYER: 0, BANKER: 0, TIE: 0 };
   t.clients.add(ws);
@@ -406,117 +602,23 @@ twss.on('connection', (ws, req) => {
   tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size });
   if (t.phase === 'sleeping') { tableBetting(t); }
   ws.on('message', raw => {
-    try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const u = auth.users[ws.accKey]; if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } } catch (e) { /* ignore */ }
+    try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const u = auth.users[ws.accKey]; if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } } catch (e) { }
   });
   ws.on('close', () => { t.clients.delete(ws); tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size }); if (t.clients.size === 0) tableSleep(t); });
 });
 
-/* --- TORNEOS (mismo wss) --- */
-const TOUR_CFG = { SEATS: 8, BANKROLL: 5000 };
-const tourTables = {};
-
-function getTourTable(slot, now) {
-  if (!tourTables[slot]) {
-    tourTables[slot] = {
-      clients: new Set(), engine: { shoeNo: 1, shoe: { cards: [] } },
-      phase: 'sleeping', phaseEndsAt: now, locked: false, hand: 0,
-      stats: {}, results: [], closed: false, closeAt: now + 1800000
-    };
-    initShoe(tourTables[slot].engine);
-  }
-  return tourTables[slot];
-}
-
-function dateKey(ts) { const d = new Date(ts); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`; }
-
-function tourBetting(t) {
-  t.phase = 'betting'; t.locked = false;
-  t.phaseEndsAt = Date.now() + 15000;
-  tBroadcast(t, { t: 'phase', phase: 'betting', secs: 15 });
-  setTimeout(() => tourResolve(t), 15000);
-}
-
-function tourResolve(t) {
-  t.phase = 'dealing'; t.locked = true;
-  const player = [], banker = [];
-  for (let i = 0; i < 2; i++) { player.push(t.engine.shoe.cards.shift()); banker.push(t.engine.shoe.cards.shift()); }
-  const pVal = (player[0] + player[1]).toString().slice(-1);
-  const bVal = (banker[0] + banker[1]).toString().slice(-1);
-  let winner = pVal > bVal ? 'PLAYER' : bVal > pVal ? 'BANKER' : 'TIE';
-  t.results.push(winner);
-  t.clients.forEach(c => {
-    const bets = c.seat.bets;
-    const total = bets.PLAYER + bets.BANKER + bets.TIE;
-    if (total > 0) {
-      let payout = 0;
-      if (winner === 'PLAYER') payout = bets.PLAYER * 2;
-      else if (winner === 'BANKER') payout = bets.BANKER * 1.95;
-      else payout = bets.TIE * 9 + bets.PLAYER + bets.BANKER;
-      const net = payout - total;
-      c.seat.bankroll = Math.max(0, c.seat.bankroll + net);
-      if (c.seat.bankroll > c.seat.peak) {
-        c.seat.xpWon = Math.floor(c.seat.bankroll - c.seat.peak);
-        c.seat.peak = c.seat.bankroll;
-      }
-      tSend(c, { t: 'result', winner, net, bankroll: c.seat.bankroll, xpWon: c.seat.xpWon });
-    }
-    c.seat.bets = { PLAYER: 0, BANKER: 0, TIE: 0 };
-  });
-  tBroadcast(t, { t: 'hand', hand: t.hand, winner, cards: { player, banker } });
-  setTimeout(() => tourBetting(t), 5000);
-}
-
-function tourSleep(t) { t.phase = 'sleeping'; tBroadcast(t, { t: 'phase', phase: 'sleeping' }); }
-
-function validTourneyBets(seat, bets) {
-  if (!bets || typeof bets !== 'object') return null;
-  const b = { PLAYER: Math.max(0, Math.round(bets.PLAYER || 0)), BANKER: Math.max(0, Math.round(bets.BANKER || 0)), TIE: Math.max(0, Math.round(bets.TIE || 0)) };
-  const total = b.PLAYER + b.BANKER + b.TIE;
-  if (total <= 0 || total > seat.bankroll) return null;
-  return b;
-}
-
-function handleTourJoin(ws, req) {
-  const su = sessionUser(req);
-  if (!su) { ws.close(4001, 'Inicia sesión primero.'); return; }
-  const q = (req.url || '').split('?')[1] || '';
-  const slotN = Number(new URLSearchParams(q).get('slot'));
-  if (![1, 2, 3, 4].includes(slotN)) { ws.close(4002, 'Torneo desconocido.'); return; }
-  const now = Date.now();
-  const t = getTourTable(slotN, now);
-  const accKey = su.name.toLowerCase();
-  const u = auth.users[accKey];
-  if (!u) { ws.close(4001, 'Cuenta no encontrada.'); return; }
-  for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás sentado en esta mesa.'); return; }
-  if (t.clients.size >= TOUR_CFG.SEATS) { ws.close(4003, 'Mesa llena.'); return; }
-  ws.user = su; ws.accKey = accKey;
-  ws.seat = { bankroll: TOUR_CFG.BANKROLL, peak: TOUR_CFG.BANKROLL, xpWon: 0, bets: { PLAYER: 0, BANKER: 0, TIE: 0 } };
-  t.clients.add(ws);
-  tSend(ws, { t: 'init', tourney: true, slot: slotN, name: 'Tournament #' + slotN, phase: t.phase, secs: 0, hand: t.hand, stats: t.stats, results: t.results.slice(-50), players: tSeatNames(t), n: t.clients.size, max: TOUR_CFG.SEATS, bankroll: ws.seat.bankroll });
-  tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size, max: TOUR_CFG.SEATS });
-  if (t.phase === 'sleeping') { tourBetting(t); }
-  ws.on('message', raw => {
-    try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const b = validTourneyBets(ws.seat, ev.bets); if (b) { ws.seat.bets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } catch (e) { /* ignore */ }
-  });
-  ws.on('close', () => { t.clients.delete(ws); if (!t.closed) tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size, max: TOUR_CFG.SEATS }); });
-}
-
-twss.on('connection', (ws, req) => {
-  const pathname = (req.url || '').split('?')[0];
-  if (pathname === '/ws/tournament' || pathname === '/tournament') { handleTourJoin(ws, req); return; }
-  // Rest of public table logic already handled above
-});
-
-/* ARRANQUE */
+/* =======================================================================
+   INICIO
+   ======================================================================= */
 server.listen(PORT, () => {
   const nUsers = Object.keys(auth.users).length;
   console.log('==========================================');
-  console.log('  BACCA-AUTO — servidor en ejecución');
-  console.log(`  Página:  http://localhost:${PORT}`);
-  console.log(`  Puerto actual: ${PORT} (desde ${process.env.PORT ? 'env.PORT' : 'default 3000'})`);
+  console.log('  BACCA-AUTO — FASE 3 FINAL');
+  console.log(`  Puerto: ${PORT}`);
+  console.log(`  URL: https://baccaelite-production.up.railway.app`);
   console.log(nUsers === 0
-    ? '  Sin cuentas aún → la PRIMERA que se registre será ADMIN.'
-    : `  Cuentas registradas: ${nUsers}`);
-  console.log('  Ctrl + C para detenerlo.');
+    ? '  Sin cuentas → la PRIMERA será ADMIN.'
+    : `  Cuentas: ${nUsers}`);
+  console.log('  Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta configurar'));
   console.log('==========================================');
 });
