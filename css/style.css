@@ -1,0 +1,1691 @@
+/* ==========================================================================
+   BACCARAT-AUTO — OFFICIAL STYLESHEET
+   --------------------------------------------------------------------------
+   Every selector appears ONCE in the whole file. To change a color, size
+   or spacing: edit the variable in section "1. VARIABLES" or the property
+   inside that element's own block. Nothing further down will override it.
+
+   OFFICIAL RULES APPLIED IN THIS VERSION:
+   - Layout: LEFT 15% Menu (#00008B) / RIGHT 85% Betting area (#87CEEB).
+   - Roads: Bead Plate 6x20 and Big Road 6x23 only.
+     White background #FFFFFF, black lines #000000, circular marks,
+     slight shadow only (flat-surface look).
+   - Game colors: Player #0000ff, Banker #ff0000, Tie #008000.
+   - Chips: $1, $5, $10, $50, $100 + custom $15-$10,000 in $5 steps
+     (approved colors kept).
+   - Betting engine: simple chip animation, flat landing, loser disappears.
+
+   INDEX
+   1.  Global variables
+   2.  Reset & base
+   3.  Layout (single panel, 15%/70%/15% columns)
+   4.  Top bar | 4b. Stats box (# / P / B / T)
+   5.  Deal area: columns, hands, cards
+   6.  Timer
+   7.  Bet zones & chip stacks
+   8.  Controls (Re-bet / X2 / Undo)
+   9.  Chips & custom chip
+   10. Win message
+   11. (removed — the balance now lives in the Top bar, section 4)
+   12. Menu area | 12c. Global chat (right 15%)
+   13. Roads
+   14. Developer panel
+   14b. Engine report modal (on-screen report + copy/download)
+   15. Flying chip (bet animation)
+   16. Utilities
+   17. Responsive
+   18. Quick edit guide
+   ========================================================================== */
+
+
+/* ------------------------------------------------------------------------
+   1. GLOBAL VARIABLES — edit here, updates everywhere.
+   ------------------------------------------------------------------------ */
+:root{
+  /* Official page/area backgrounds */
+  --betting-bg:#87CEEB;      /* center, betting area (sky blue)      */
+  --menu-bg:#00008B;         /* left side, menu area (dark blue)     */
+
+  /* Global chat (right 15%) */
+  --chat-bg:#00008B;         /* chat background = menu background    */
+  --chat-text:#fff;          /* chat text color                      */
+  --chat-size:12px;          /* chat font size                       */
+  --chat-admin:#ffd61f;      /* ADMIN name color (gold)              */
+  --chat-mod:#00e676;        /* MOD name color (green)               */
+  --chat-user:#87CEEB;       /* player name color (sky blue)         */
+
+  /* Text */
+  --text:#000;
+  --muted:#ff0000;
+
+  /* Official game colors */
+  --player:#0000ff;
+  --banker:#ff0000;
+  --tie:#008000;
+  --gold:#ffd61f;            /* small accents (timer label, dev panel) */
+
+  /* Road cell size */
+  --cell:16px;               /* Bead Plate & Big Road */
+
+  /* Official road colors: white board, black lines */
+  --road-bg:#FFFFFF;
+  --road-line:#ccc;
+
+  /* Main panel border */
+  --panel-border:rgba(0,45,95,.65);
+
+  /* Reusable "surface" boxes: status boxes, control buttons, custom input */
+  --surface-a:#00008B;
+  --surface-b:#00008B;
+  --surface-border:rgba(255,255,255,.22);
+  --surface-shadow:0 3px 8px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.18);
+
+  /* Bet zones */
+  --bet-player-a:#0000ff;   --bet-player-b:#3333ff;
+  --bet-tie-a:#008000;      --bet-tie-b:#338333;
+  --bet-banker-a:#ff0000;   --bet-banker-b:#ff3333;
+
+  /* Approved chip colors (classic casino), mapped to official values:
+     $1 white | $5 red | $10 blue | $50 green | $100 black | custom purple */
+  --chip-1-a:#ffffff;       --chip-1-b:#dedede;      --chip-1-text:#000;
+  --chip-5-a:#ff3333;       --chip-5-b:#ff0000;
+  --chip-10-a:#3333ff;      --chip-10-b:#0000ff;
+  --chip-50-a:#338333;      --chip-50-b:#008000;
+  --chip-100-a:#030303;     --chip-100-b:#000000;
+  --chip-custom-a:#833383;  --chip-custom-b:#800080;
+
+  /* Timer alert (last seconds) */
+  --warning-bg:#ffff00;
+  --warning-border:#ff0000;
+
+  /* Win message */
+  --win-color:#ffff00;
+}
+
+
+/* ------------------------------------------------------------------------
+   2. RESET & BASE
+   ------------------------------------------------------------------------ */
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  color:var(--text);
+  font-family:Arial,Helvetica,sans-serif;
+  background:var(--betting-bg); /* official page background */
+}
+
+
+/* ------------------------------------------------------------------------
+   3. LAYOUT — SINGLE PANEL, THREE COLUMNS (LEFT 15% / CENTER 70% / RIGHT 15%)
+   ------------------------------------------------------------------------ */
+.app{
+  height:100vh;
+  padding:8px;                /* margin around the main panel */
+}
+
+.main-panel{
+  height:100%;
+  display:grid;
+  grid-template-columns:15% 70% 15%; /* menu / betting / global chat */
+  border:1px solid var(--panel-border);
+  border-radius:12px;
+  overflow:hidden;             /* radius clips both columns evenly */
+  box-shadow:0 10px 30px rgba(0,0,0,.30);
+}
+
+/* RIGHT column: betting area */
+.betting-panel{
+  position:relative;           /* anchors the YOU WIN overlay */
+  padding: 20px 20px;         /* inner padding of the betting area */
+  overflow:auto;
+  background:var(--betting-bg);
+}
+
+
+/* ------------------------------------------------------------------------
+   4. TOP BAR
+   ------------------------------------------------------------------------ */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.status-box{
+  display:flex;                 /* NECESARIO para que gap funcione */
+  justify-content:space-between;/* Separa los spans a los lados */
+  gap:14px;                     /* Espacio entre los spans */
+  width:fit-content;   /* Solo lo necesario */
+  max-width:650px;
+  font-size:13px;      /* reduced so the single-row top bar fits */
+  padding:6px 8px;
+  border-radius:10px;
+  color:#fff;
+  border:1px solid var(--surface-border);
+  background:#00008b;
+}
+
+
+/* ------------------------------------------------------------------------
+   4c. FREE TOKEN BUTTON — daily bonus, sits between the status box and
+   the stats box. Two states (set by js/app.js):
+   - .ready   → green, pulsing, clickable ("🎁 Free Token")
+   - disabled → gray countdown ("⏱ 13h 05m")
+   ------------------------------------------------------------------------ */
+.free-token-btn{
+  padding:6px 12px;
+  border:2px solid #00008b;
+  border-radius:10px;
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.3px;
+  color:#555;
+  background:#e8e8e8;
+  cursor:default;
+  white-space:nowrap;
+  transition:background .2s, color .2s, transform .1s;
+}
+.free-token-btn.ready{
+  color:#fff;
+  background:linear-gradient(180deg,#1fd655,#008000);
+  cursor:pointer;
+  animation:ftPulse 1.2s ease-in-out infinite alternate;
+}
+.free-token-btn.ready:hover{ transform:translateY(-1px); }
+@keyframes ftPulse{
+  from{ box-shadow:0 0 0 rgba(31,214,85,0); }
+  to{   box-shadow:0 0 14px rgba(31,214,85,.75); }
+}
+
+
+/* ------------------------------------------------------------------------
+   4b. STATS BOX (# / P / B / T) — right side of the top bar.
+   Moved here from index.html so every color/size edit lives in the CSS.
+   Counter colors reuse the official game colors (section 1).
+   ------------------------------------------------------------------------ */
+.stats-box{
+  display:inline-flex;
+  align-items:center;
+  gap:14px;
+  padding:4px 8px;
+  border-radius:10px;
+  font-size:13px;      /* reduced so the single-row top bar fits */
+  font-weight:550;
+  background:#ffffe0;
+  border:2px solid #00008b;
+}
+
+.stats-box .stat-hand{   color:#000000; }        /* hand counter (#) */
+.stats-box .stat-player{ color:var(--player); }  /* P counter        */
+.stats-box .stat-banker{ color:var(--banker); }  /* B counter        */
+.stats-box .stat-tie{    color:var(--tie); }     /* T counter        */
+
+
+
+/* ------------------------------------------------------------------------
+   5. DEAL AREA — three equal columns, each hand with its bet zone below
+   (matches the marked screenshot).
+   ------------------------------------------------------------------------ */
+.deal-area{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:12px;
+  align-items:stretch;
+  margin-top:18px;
+}
+
+.table-column{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+/* Pushes every bet zone to the bottom so the three align in one row */
+.table-column .bet-zone{
+  margin-top:auto;
+}
+
+.hand-panel{
+  text-align:center;
+  min-height:190px;
+}
+
+.hand-panel h2{
+  font-size:14px;
+  letter-spacing:1px;
+  font-weight:bold;
+  text-shadow:0 1px 2px rgba(0,0,0,.25); /* slight shadow only */
+}
+
+/* Title colors (moved here from inline styles in index.html) */
+.hand-panel h2.player{ color:var(--player); }
+.hand-panel h2.banker{ color:var(--banker); }
+
+.cards{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  min-height:90px;
+}
+
+.card{
+  width:57px;
+  height:80px;
+  background:#fafafa;
+  color:#000;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  font-weight:bold;
+  font-size:22px;
+  box-shadow:0 4px 10px rgba(0,0,0,.30); /* slight shadow only */
+  transform:translateY(-12px);
+  opacity:0;
+  animation:deal .50s forwards;
+}
+
+.card.red{
+  color:#ff0000;
+}
+
+.card .suit{
+  font-size:26px;
+}
+
+.total{
+  margin:0 auto;
+  width:42px;
+  height:42px;
+  border-radius:25%;
+  display:grid;
+  place-items:center;
+  border:5px solid #000;
+  font-size:22px;
+  font-weight:bold;
+}
+
+.total.player{ border-color:var(--player); }
+.total.banker{ border-color:var(--banker); }
+
+@keyframes deal{
+  to{ transform:translateY(0); opacity:1; }
+}
+
+
+/* ------------------------------------------------------------------------
+   5b. Shoe message ("New Shoe." / "Current Shoe.." / "Last Hand!") lives
+   INSIDE the timer panel, right above the countdown. Green, sized to fit
+   the label row without moving the timer.
+   ------------------------------------------------------------------------ */
+.shoe-inline{
+  text-align:center;
+  padding:4px 0 2px;
+  font-size:16px;
+  font-weight:800;
+  letter-spacing:.6px;
+  color:#000;
+  
+}
+
+
+/* ------------------------------------------------------------------------
+   6. TIMER — betting 12s, alert on the last 6s (timing lives in app.js;
+   here only the look of the alert state).
+   ------------------------------------------------------------------------ */
+.timer-panel{
+  width:190px;
+  height:140px;
+  /* Original alignment note: 47px kept the TIE zone aligned with the
+     PLAYER/BANKER bet zones. The ring made the panel 10px taller
+     (130 → 140), so the top margin drops 10px (47 → 37) to keep the
+     TIE zone exactly where it was. */
+  margin: 37px 70px 0px 70px;
+  text-align:center;
+  padding:5px 5px;
+  border-radius:12px;
+  background:#fff;
+  border:3px solid #ff0000;
+  transition:background .60s, border-color .25s, box-shadow .25s;
+}
+
+.timer-label{
+  font-size:16px;
+  line-height:1.10;
+  letter-spacing:.2px;
+  color:var(--gold);
+}
+
+.timer{
+  font-size:40px;
+  font-weight:900;
+  color:#008000;   /* green while there is time; red on the last 6s (.warning) */
+}
+
+/* --- TIMER RING: circular countdown around the number (built by app.js).
+       Ring sits directly on the white panel: bright green ring that
+       drains and turns RED on the last 6 seconds. --- */
+.timer-ring-wrap{
+  position:relative;
+  width:74px;
+  height:74px;
+  margin:2px auto 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.timer-ring{
+  width:72px;
+  height:72px;
+  transform:rotate(-90deg);   /* ring drains clockwise from 12 o'clock */
+}
+.timer-ring .ring-fg{
+  fill:none;
+  stroke:#1fd655;             /* bright GREEN while >6s left */
+  stroke-width:10;
+  stroke-linecap:round;
+  stroke-dasharray:276.46;    /* full circle (r=44) — matches RING_C in app.js */
+  stroke-dashoffset:0;
+  transition:stroke-dashoffset 1s linear, stroke .3s;
+}
+.timer-ring .ring-fg.danger{
+  stroke:#ff2d2d;             /* RED on the last 6 seconds */
+}
+/* The number sits centered INSIDE the ring */
+.timer-ring-wrap .timer{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  color:#000000;   /* black over the white panel; red on the last 6s */
+}
+
+.phase{
+  font-size:15px;
+  line-height:1.2;
+  font-weight:700;
+  color:#000000;   /* black normally; red on the last 6 seconds (.warning) */
+}
+
+/* Alert state (last 6 seconds) — the panel background stays the SAME
+   color; the alert is shown by the ring, the number and the texts
+   turning red, plus the red glow. */
+.timer-panel.warning{
+  border:3px solid var(--warning-border);
+  box-shadow:0 0 18px rgba(255,0,0,.55);
+}
+
+.timer-panel.warning .timer-label,
+.timer-panel.warning .timer,
+.timer-panel.warning .phase{
+  color:var(--warning-border);
+  text-shadow:none;
+}
+
+.timer-panel.warning .timer-label{
+  font-weight:900;
+}
+
+.timer-panel.warning .timer{
+  animation:timerPulse .40s ease-in-out infinite alternate;
+}
+
+.timer-panel.warning .phase{
+  font-weight:900;
+}
+
+@keyframes timerPulse{
+  from{ transform:scale(1); }
+  to{ transform:scale(1.20); }
+}
+
+
+/* ------------------------------------------------------------------------
+   7. BET ZONES & CHIP STACKS
+   ------------------------------------------------------------------------ */
+.bet-zone{
+  position:relative;
+  height:80px;
+  border-radius:5px;
+  border:2px solid #000;
+  color:#fff;
+  font-weight:500;
+  font-size:15px;
+  cursor:pointer;
+  text-shadow:0 1px 2px rgba(0,0,0,.35);
+  box-shadow:0 3px 7px rgba(0,0,0,.28);
+}
+
+.bet-zone span{
+  font-size:16px;
+}
+
+.bet-zone.player{ background:linear-gradient(150deg, var(--bet-player-a), var(--bet-player-b)); }
+.bet-zone.tie{    background:linear-gradient(150deg, var(--bet-tie-a), var(--bet-tie-b)); }
+.bet-zone.banker{ background:linear-gradient(150deg, var(--bet-banker-a), var(--bet-banker-b)); }
+
+/* NOTE: chips DO pile up now (.table-chip, section 15). They stack on the
+   RIGHT side of the zone so the bet VALUE number is never covered. */
+
+
+/* ------------------------------------------------------------------------
+   8. CONTROLS (Re-bet / X2 / Undo)
+   ------------------------------------------------------------------------ */
+.control-area{
+  display:flex;
+  justify-content:center;
+  gap:15px;
+  padding-top: 25px; /* top spacing above the control row */
+}
+
+.control-area button{
+  width:90px;
+  height:40px;
+  border-radius:25px;
+  font-weight:bold;
+  font-size: 15px;
+  cursor:pointer;
+  color:#fff;
+  background:#00008B;
+  border:4px solid var(--surface-border);
+  background:linear-gradient(var(--surface-a), var(--surface-b));
+  box-shadow:var(--surface-shadow);
+}
+
+.control-area button:hover{
+  filter:brightness(1.15);
+}
+
+
+/* ------------------------------------------------------------------------
+   9. CHIPS & CUSTOM CHIP — approved design and colors, no change.
+   Official values: $1, $5, $10, $50, $100, custom.
+   ------------------------------------------------------------------------ */
+.chips{
+  display:flex;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:16px;
+}
+
+.chips button{
+  position:relative;
+  z-index:0;
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  overflow:hidden;
+  cursor:pointer;
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  text-shadow:0 2px 3px rgba(0,0,0,.7);
+  border:3px solid rgba(255,255,255,.95);
+  box-shadow:0 4px 8px rgba(0,0,0,.30), inset 0 0 0 6px rgba(0,0,0,.12), inset 0 0 0 13px rgba(255,255,255,.15);
+}
+
+.chips button > *{
+  position:relative;
+  z-index:2;
+}
+
+/* Color per denomination */
+.chips button[data-chip="1"]{
+  background:linear-gradient(180deg, var(--chip-1-a), var(--chip-1-b));
+  color:var(--chip-1-text);
+  text-shadow:none;
+  border-color:#fff;
+}
+.chips button[data-chip="5"]{     background:linear-gradient(180deg, var(--chip-5-a), var(--chip-5-b)); }
+.chips button[data-chip="10"]{    background:linear-gradient(180deg, var(--chip-10-a), var(--chip-10-b)); }
+.chips button[data-chip="50"]{    background:linear-gradient(180deg, var(--chip-50-a), var(--chip-50-b)); }
+.chips button[data-chip="100"]{   background:linear-gradient(180deg, var(--chip-100-a), var(--chip-100-b)); }
+
+#customChipBtn{
+  font-size:8px;
+  color:#fff;
+  text-shadow:none;
+  background:linear-gradient(180deg, var(--chip-custom-a), var(--chip-custom-b));
+}
+
+/* Custom chip dropdown: the (+) badge on the chip's corner opens/closes
+   the customize panel below. The badge turns into (−) while open. */
+.custom-chip-wrap{
+  position:relative;
+  display:inline-block;
+}
+
+#customMenuBtn{
+  position:absolute;
+  top:-5px;
+  right:-5px;
+  z-index:3;
+  width:18px;
+  height:18px;
+  padding:0;
+  border-radius:50%;
+  font-size:12px;
+  font-weight:900;
+  line-height:1;
+  color:#fff;
+  cursor:pointer;
+  border:2px solid #fff;
+  background:#0000ff;
+  box-shadow:0 2px 4px rgba(0,0,0,.35);
+  text-shadow:none;
+}
+
+#customMenuBtn:hover{
+  filter:brightness(1.25);
+}
+
+.chips button.active{
+  outline:4px solid var(--gold);
+  box-shadow:0 0 14px rgba(255,214,31,.65), 0 4px 8px rgba(0,0,0,.30), inset 0 0 0 6px rgba(0,0,0,.12), inset 0 0 0 13px rgba(255,255,255,.15);
+}
+
+/* Floating dropdown: opens to the RIGHT of the custom chip button.
+   position:absolute + .custom-chip-wrap (position:relative) = it floats
+   over the table and NEVER pushes down the elements below it. */
+.custom-chip-panel{
+  position:absolute;
+  left:calc(100% + 12px);      /* to the right of the chip */
+  top:50%;
+  transform:translateY(-50%);
+  z-index:50;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+  padding:8px 10px;
+  border-radius:10px;
+  font-size:12px;
+  color:#0000ff;
+  background:#ffffe0;
+  border:2px solid var(--surface-border);
+  box-shadow:0 6px 16px rgba(0,0,0,.35);
+}
+
+.custom-chip-panel input{
+  width:110px;
+  padding:6px;
+  text-align:center;
+  font-weight:bold;
+  border-radius:8px;
+  color:#fff;
+  border:1px solid var(--surface-border);
+  background:linear-gradient(var(--surface-a), var(--surface-b));
+  box-shadow:var(--surface-shadow);
+}
+
+.custom-chip-panel button{
+  padding:6px 10px;
+  border-radius:8px;
+  font-weight:bold;
+  cursor:pointer;
+  color:#fff;
+  border:1px solid var(--surface-border);
+  background:linear-gradient(var(--surface-a), var(--surface-b));
+  box-shadow:var(--surface-shadow);
+}
+
+.custom-chip-panel button:hover{
+  filter:brightness(1.15);
+}
+
+
+/* ------------------------------------------------------------------------
+   10. WIN MESSAGE — centered over the betting area (.betting-panel is
+   position:relative). Only the TEXT pulses, so it never overflows the
+   panel and never triggers the scrollbars (overflow:auto).
+   ------------------------------------------------------------------------ */
+.win-message{
+  position:absolute;
+  top:50%;
+  left:50%;
+  text-align:center;
+  font-size:40px;
+  font-weight:900;
+  letter-spacing:2px;
+  color:var(--win-color);
+  text-shadow:0 0 10px #0000ff, 0 0 20px #008000, 0 0 30px #ff0000;
+  z-index:10;
+  pointer-events:none;
+  transform:translate(-50%,-50%);
+  animation:winPulse .50s ease-in-out infinite alternate;
+}
+
+@keyframes winPulse{
+  from{ transform:translate(-50%,-50%) scale(1);    opacity:.85; }
+  to{   transform:translate(-50%,-50%) scale(1.08); opacity:1;   }
+}
+
+
+/* ------------------------------------------------------------------------
+   11. (REMOVED) — The old standalone .balance block is gone. The balance
+   is now shown inside the Top bar (#balance within .status-box, section 4).
+   To restyle it, edit .status-box or target #balance there.
+   ------------------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------------------
+   12. MENU AREA (LEFT 15%)
+   .menu-panel is the left column with the navigation menu.
+   - Add/remove items directly in index.html (<nav class="menu">).
+   - Change the background in Section 1: --menu-bg.
+   ------------------------------------------------------------------------ */
+.menu-panel {
+  padding: 18px;
+  background: var(--menu-bg);
+  border-right: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+}
+
+/* MENU LIST */
+.menu-panel .menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ITEMS */
+.menu-panel .menu ul li {
+  margin-bottom: 12px;
+}
+
+/* LINKS */
+.menu-panel .menu ul li a {
+  display: block;
+  padding: 12px 12px;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 5px;
+  font-size: 14px;
+  transition: background 0.4s, transform 0.2s;
+}
+
+/* HOVER */
+.menu-panel .menu ul li a:hover {
+  background: #008000;
+  transform: translateX(3px);
+}
+
+/* ACTIVE PAGE — js/menu.js adds .active to the link of the current page */
+.menu-panel .menu ul li a.active {
+  background: #008000;
+  font-weight: 700;
+}
+
+/* ENGINE REPORT BUTTON — pinned to the BOTTOM of the menu column.
+   .menu-panel is a flex column, so margin-top:auto pushes it down.
+   Opens the on-screen report modal (see section 14b). */
+.menu-report-btn{
+  margin-top:auto;
+  width:100%;
+  padding:10px 10px;
+  border-radius:5px;
+  cursor:pointer;
+  color:#fff;
+  font-size:16px;
+  font-weight:700;
+  font-family:inherit;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:2px;
+  border:2px solid var(--gold);
+  background:transparent;
+  transition:background .4s, transform .2s;
+}
+
+.menu-report-btn small{
+  font-size:11px;
+  font-weight:400;
+  color:var(--gold);
+}
+
+.menu-report-btn:hover{
+  background:#008000;
+  transform:translateX(3px);   /* same hover motion as the menu links */
+}
+
+
+/* ------------------------------------------------------------------------
+   12d. USER BLOCK (menú izquierdo) + CONTENIDO DE SECCIONES
+   El bloque de usuario es el espacio reservado para el login (fase 2):
+   avatar (inicial del nombre por ahora, foto después), nombre y rol.
+   Colores de rol = mismos del chat (--chat-admin / --chat-mod / --chat-user).
+   ------------------------------------------------------------------------ */
+.user-block{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px;
+  margin-bottom:16px;
+  border-radius:8px;
+  border:1px solid var(--surface-border);
+  background:rgba(255,255,255,.06);
+}
+
+.user-avatar{
+  flex:0 0 auto;
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  font-size:18px;
+  font-weight:900;
+  color:#fff;
+  background:#008000;
+  border:2px solid var(--gold);
+  text-transform:uppercase;
+  overflow:hidden;              /* listo para cuando el avatar sea una foto */
+}
+
+.user-info{
+  min-width:0;                  /* permite recortar nombres largos */
+}
+
+.user-name{
+  color:#fff;
+  font-size:14px;
+  font-weight:800;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.user-role{
+  display:inline-block;
+  margin-top:2px;
+  padding:1px 6px;
+  border-radius:4px;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.5px;
+}
+
+.user-role.admin{ background:var(--chat-admin); color:#000; }
+.user-role.mod{   background:var(--chat-mod);   color:#000; }
+.user-role.user{  background:var(--chat-user);  color:#000; }
+
+/* Título de cada sección (centro de las páginas que no son el juego) */
+.page-title{
+  margin:6px 0 18px;
+  font-size:26px;
+  font-weight:900;
+  letter-spacing:1px;
+  color:#00008b;
+  text-shadow:0 1px 2px rgba(0,0,0,.15);
+}
+
+/* Recuadro provisional "en construcción" — se borra al llenar la sección */
+.page-placeholder{
+  padding:60px 20px;
+  text-align:left;
+  font-size:18px;
+  font-weight:700;
+  color:#00008b;
+  border:3px dashed #00008b;
+  border-radius:12px;
+  background:rgba(255,255,255,.35);
+}
+
+.page-placeholder small{
+  font-size:13px;
+  font-weight:400;
+}
+
+
+/* ------------------------------------------------------------------------
+   12c. GLOBAL CHAT (RIGHT 15%)
+   Background = --chat-bg (#00008B), text 12px #fff (--chat-size/--chat-text).
+   Structure (top → bottom): header / pinned announcement / mod tools /
+   messages / "new messages" pill / notice / emoji panel / compose / meta.
+   Roles: name colors come from --chat-admin / --chat-mod / --chat-user.
+   .mod-only elements are hidden unless <body> (via js/chat.js) grants
+   the mod/admin role with the .chat-can-mod class.
+   ------------------------------------------------------------------------ */
+.chat-panel{
+  position:relative;            /* anchors emoji panel + new-msgs pill */
+  display:flex;
+  flex-direction:column;
+  min-width:0;                  /* lets the 15% column shrink cleanly */
+  overflow:hidden;
+  color:var(--chat-text);
+  font-size:var(--chat-size);
+  background:var(--chat-bg);
+  border-left:1px solid var(--panel-border);
+}
+
+/* Header: title, online counter, small round buttons */
+.chat-head{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:10px 8px;
+  border-bottom:1px solid var(--surface-border);
+}
+
+.chat-title{
+  font-weight:800;
+  letter-spacing:.4px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.chat-online{
+  margin-left:auto;
+  color:#00e676;
+  white-space:nowrap;
+}
+
+.chat-head-btns{
+  display:inline-flex;
+  gap:4px;
+}
+
+.chat-head-btns button{
+  width:22px;
+  height:22px;
+  padding:0;
+  border-radius:50%;
+  font-size:11px;
+  line-height:1;
+  cursor:pointer;
+  color:var(--chat-text);
+  border:1px solid var(--surface-border);
+  background:transparent;
+}
+
+.chat-head-btns button:hover{
+  background:#008000;
+}
+
+/* Sound button while muted */
+.chat-head-btns button.off{
+  opacity:.45;
+}
+
+/* PINNED OFFICIAL ANNOUNCEMENT — fixed at the top of the chat */
+.chat-pinned{
+  position:relative;
+  padding:8px 22px 8px 8px;
+  border-bottom:2px solid var(--gold);
+  background:rgba(255,214,31,.14);
+}
+
+.chat-pinned-tag{
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.6px;
+  color:var(--gold);
+  margin-bottom:3px;
+}
+
+.chat-pinned-text{
+  line-height:1.35;
+  word-wrap:break-word;
+}
+
+.chat-pinned button{
+  position:absolute;
+  top:4px;
+  right:4px;
+  width:18px;
+  height:18px;
+  padding:0;
+  border-radius:50%;
+  font-size:12px;
+  line-height:1;
+  cursor:pointer;
+  color:var(--chat-text);
+  border:1px solid var(--surface-border);
+  background:transparent;
+}
+
+/* Moderation toolbar (opens with the 🛡 button) */
+.chat-mod-tools{
+  display:flex;
+  gap:4px;
+  padding:6px 8px;
+  border-bottom:1px solid var(--surface-border);
+  background:rgba(0,0,0,.25);
+}
+
+.chat-mod-tools button{
+  flex:1;
+  padding:5px 4px;
+  border-radius:6px;
+  font-size:10px;
+  font-weight:700;
+  cursor:pointer;
+  color:var(--chat-text);
+  border:1px solid var(--surface-border);
+  background:transparent;
+}
+
+.chat-mod-tools button:hover{
+  background:#008000;
+}
+
+.chat-mod-tools button.on{      /* slow mode active */
+  background:#008000;
+  border-color:var(--gold);
+}
+
+/* MESSAGE LIST */
+.chat-messages{
+  flex:1;
+  overflow-y:auto;
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(255,255,255,.35) transparent;
+}
+
+.chat-msg{
+  position:relative;
+  line-height:1.4;
+  word-wrap:break-word;
+  padding-right:2px;
+}
+
+.chat-msg .u{ font-weight:800; }
+.chat-msg .u.admin{ color:var(--chat-admin); }
+.chat-msg .u.mod{   color:var(--chat-mod); }
+.chat-msg .u.user{  color:var(--chat-user); }
+
+.chat-msg .badge{
+  display:inline-block;
+  margin-right:3px;
+  padding:0 4px;
+  border-radius:4px;
+  font-size:9px;
+  font-weight:900;
+  vertical-align:1px;
+}
+
+.chat-msg .badge.admin{ background:var(--chat-admin); color:#000; }
+.chat-msg .badge.mod{   background:var(--chat-mod);   color:#000; }
+
+.chat-msg .t{
+  float:right;
+  margin-left:6px;
+  font-size:9px;
+  opacity:.55;
+}
+
+/* System line (joins, mutes, cleared chat...) */
+.chat-msg.sys{
+  text-align:center;
+  font-style:italic;
+  font-size:11px;
+  opacity:.75;
+}
+
+/* Hover moderation actions on each message (mods/admin only) */
+.chat-msg .msg-actions{
+  display:none;
+  position:absolute;
+  right:0;
+  top:-8px;
+  gap:2px;
+}
+
+.chat-can-mod .chat-msg:hover .msg-actions{
+  display:inline-flex;
+}
+
+.chat-msg .msg-actions button{
+  width:18px;
+  height:18px;
+  padding:0;
+  border-radius:4px;
+  font-size:10px;
+  line-height:1;
+  cursor:pointer;
+  color:var(--chat-text);
+  border:1px solid var(--surface-border);
+  background:var(--chat-bg);
+}
+
+.chat-msg .msg-actions button:hover{
+  background:#ff0000;
+}
+
+/* Elements reserved for mods/admin: hidden for normal players */
+.mod-only{
+  display:none;
+}
+
+.chat-can-mod .mod-only{
+  display:inline-flex;
+}
+
+/* "New messages" pill: appears when the user scrolled up */
+.chat-newmsgs{
+  position:absolute;
+  left:50%;
+  bottom:72px;
+  transform:translateX(-50%);
+  z-index:5;
+  padding:4px 10px;
+  border-radius:12px;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+  color:#000;
+  border:1px solid #fff;
+  background:var(--gold);
+  box-shadow:0 3px 8px rgba(0,0,0,.4);
+}
+
+/* Small system notice (cooldown, rules, slow mode...) */
+.chat-notice{
+  padding:6px 8px;
+  font-size:10.5px;
+  line-height:1.35;
+  color:#000;
+  background:#ffffe0;
+  border-top:1px solid var(--surface-border);
+}
+
+/* Quick emoji panel: floats above the compose bar */
+.chat-emoji{
+  position:absolute;
+  left:6px;
+  right:6px;
+  bottom:66px;
+  z-index:6;
+  display:flex;
+  flex-wrap:wrap;
+  gap:2px;
+  padding:6px;
+  border-radius:8px;
+  background:#000046;
+  border:1px solid var(--surface-border);
+  box-shadow:0 6px 16px rgba(0,0,0,.45);
+}
+
+.chat-emoji button{
+  width:24px;
+  height:24px;
+  padding:0;
+  font-size:14px;
+  line-height:1;
+  cursor:pointer;
+  border:none;
+  border-radius:4px;
+  background:transparent;
+}
+
+.chat-emoji button:hover{
+  background:#008000;
+}
+
+/* Compose bar */
+.chat-compose{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:8px 6px 4px;
+  border-top:1px solid var(--surface-border);
+}
+
+.chat-compose input{
+  flex:1;
+  min-width:0;
+  padding:7px 8px;
+  border-radius:12px;
+  font-size:var(--chat-size);
+  color:var(--chat-text);
+  border:1px solid var(--surface-border);
+  background:rgba(255,255,255,.10);
+}
+
+.chat-compose input::placeholder{
+  color:rgba(255,255,255,.55);
+}
+
+.chat-compose input:focus{
+  outline:2px solid var(--gold);
+  outline-offset:0;
+}
+
+.chat-compose button{
+  width:28px;
+  height:28px;
+  padding:0;
+  border-radius:50%;
+  font-size:13px;
+  line-height:1;
+  cursor:pointer;
+  color:var(--chat-text);
+  border:1px solid var(--surface-border);
+  background:transparent;
+}
+
+.chat-compose button:hover{
+  background:#008000;
+}
+
+/* Char counter + slow-mode tag under the input */
+.chat-meta{
+  display:flex;
+  justify-content:space-between;
+  padding:0 10px 6px;
+  font-size:9px;
+  opacity:.65;
+}
+
+
+/* ------------------------------------------------------------------------
+   13. ROADS — official sizes and colors:
+   Bead Plate 6x20 | Big Road 6x23
+   White board #FFFFFF, gray lines #ccc, circular marks,
+   slight shadow only (flat-surface look).
+   ------------------------------------------------------------------------ */
+.road{
+  overflow:hidden;
+  border-radius:5px;
+  background:var(--road-bg);
+  border:1px solid var(--road-line);
+  box-shadow:0 2px 5px rgba(0,0,0,.30); /* slight shadow: flat surface */
+}
+
+.bead-plate{
+  display:grid;
+  grid-template-rows:repeat(6,var(--cell));
+  grid-auto-flow:column;
+  grid-auto-columns:var(--cell);
+  width:calc(20 * var(--cell) + 2px);
+  height:calc(6 * var(--cell) + 2px);
+  background-image:
+    linear-gradient(var(--road-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--road-line) 1px, transparent 1px);   background-size:var(--cell) var(--cell);
+}
+
+
+.big-road{
+  position:relative;
+  width:calc(23 * var(--cell) + 2px);  
+  height:calc(6 * var(--cell) + 2px);
+  background-image:
+    linear-gradient(var(--road-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--road-line) 1px, transparent 1px);
+  background-size:var(--cell) var(--cell);
+}
+
+/* Circular marks, slight shadow only */
+.mark{
+  width:calc(var(--cell) - 3.5px);
+  height:calc(var(--cell) - 3.5px);
+  border-radius:50%;
+  position:absolute;
+  display:grid;
+  place-items:center;
+  font-size:6px;
+  font-weight:bold;
+  color:#fff;
+  box-shadow:0 1px 1px rgba(0,0,0,.25);
+}
+
+.mark.player{ background:var(--player); }
+.mark.banker{ background:var(--banker); }
+.mark.tie{    background:var(--tie); }
+
+.bead-plate .mark{
+  position:static;
+  margin:0;
+}
+
+.history-container {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 20px 0px;       /* inner padding of the betting area */
+}
+
+.history-box {
+  flex: 0 0 auto;           /* the box is exactly as wide as its road */
+}
+
+/* ------------------------------------------------------------------------
+   14. DEVELOPER PANEL
+   ------------------------------------------------------------------------ */
+.dev-panel{
+  position:fixed;
+  right:14px;
+  bottom:14px;
+  width:min(520px, calc(100vw - 28px));
+  max-height:70vh;
+  padding:10px;
+  border-radius:12px;
+  background:#080808;
+  border:1px solid var(--gold);
+  box-shadow:0 12px 40px #000c;
+  overflow:auto;
+  z-index:20;
+}
+
+.dev-head{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding-bottom:8px;
+  margin-bottom:8px;
+  border-bottom:1px solid rgba(255,255,255,.28);
+}
+
+.dev-head span{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.dev-head button{
+  margin-left:auto;
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  color:#fff;
+  cursor:pointer;
+  border:1px solid rgba(255,255,255,.28);
+  background:#151515;
+}
+
+.dev-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:8px;
+}
+
+.dev-actions button{
+  padding:8px 10px;
+  border-radius:8px;
+  cursor:pointer;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.28);
+  background:#151515;
+}
+
+.dev-actions button:hover{
+  border-color:var(--gold);
+}
+
+#devOutput{
+  margin:0;
+  padding:8px;
+  max-height:45vh;
+  overflow:auto;
+  white-space:pre-wrap;
+  font-size:12px;
+  color:#ddd;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.28);
+  background:#020202;
+}
+
+
+/* ------------------------------------------------------------------------
+   14b. ENGINE REPORT MODAL — the "Bacca-Auto Complete Report" is generated
+   and shown ON SCREEN (no forced download). Copy button + optional .txt.
+   Surfaces reuse the app palette: dark-blue header (--surface-a/-b) and
+   the same light-yellow board (#ffffe0) used by the stats box.
+   ------------------------------------------------------------------------ */
+.report-overlay{
+  position:fixed;
+  inset:0;
+  z-index:60;                    /* above the dev panel (z-index:20) */
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(0,0,30,.62);
+}
+
+.report-overlay.hidden{
+  display:none;                  /* explicit: never depends on rule order */
+}
+
+.report-panel{
+  width:min(680px,100%);
+  max-height:min(84vh,860px);
+  display:flex;
+  flex-direction:column;
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+  border:2px solid var(--menu-bg);
+  box-shadow:0 18px 50px rgba(0,0,0,.45);
+}
+
+.report-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 16px;
+  color:#fff;
+  background:linear-gradient(var(--surface-a), var(--surface-b));
+}
+
+.report-head h2{
+  margin:0;
+  font-size:14px;
+  letter-spacing:.5px;
+}
+
+.report-head button{
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  color:#fff;
+  cursor:pointer;
+  font-size:14px;
+  line-height:1;
+  border:1px solid var(--surface-border);
+  background:transparent;
+}
+
+.report-head button:hover{
+  background:#008000;
+}
+
+/* Monospace body so the report columns stay perfectly aligned */
+#reportBody{
+  flex:1;
+  margin:0;
+  padding:16px 18px;
+  overflow:auto;
+  font-family:Consolas,'Courier New',monospace;
+  font-size:12.5px;
+  line-height:1.55;
+  white-space:pre;
+  color:#111;
+  background:#ffffe0;
+}
+
+.report-foot{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding:10px 14px;
+  border-top:1px solid var(--road-line);
+  background:#fff;
+}
+
+.report-foot button{
+  padding:9px 16px;
+  border-radius:25px;
+  font-weight:600;
+  cursor:pointer;
+  color:#fff;
+  border:2px solid var(--surface-border);
+  background:linear-gradient(var(--surface-a), var(--surface-b));
+  box-shadow:var(--surface-shadow);
+}
+
+.report-foot button:hover{
+  filter:brightness(1.15);
+}
+
+/* Brief confirmation state after copying to the clipboard */
+.report-foot button.copied{
+  background:#008000;
+  border-color:#fff;
+}
+
+
+/* ------------------------------------------------------------------------
+   15. FLYING CHIP + TABLE CHIPS
+   - chipArc: the chip is TOSSED — it lifts, curves through the air
+     (semicircle) with a slight spin and lands flat on the stack.
+   - .table-chip: physical chip resting on the table, stacked at the
+     right side of the bet zone.
+   - chip-jump: ONE CLICK on another zone makes the whole stack JUMP
+     to that zone (exclusive bet: only one zone at a time).
+   - chip-lose: losing chips fly toward the dealer (top of the table).
+   - chip-collect: winning/returned chips fly down to the balance.
+   ------------------------------------------------------------------------ */
+.flying-chip{
+  position:fixed;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  font-weight:900;
+  font-size:11px;
+  z-index:999;
+  pointer-events:none;
+  border:3px solid #fff;
+  box-shadow:0 3px 8px rgba(0,0,0,.35);
+  animation:chipArc 1.10s cubic-bezier(.30,.10,.55,1) forwards;
+}
+
+@keyframes chipArc{
+  0%{   transform:translate(0,0) scale(1) rotate(0deg); }
+  50%{  transform:translate(calc(var(--tx) * .5), calc(var(--ty) * .5 - 90px)) scale(1.18) rotate(180deg); }
+  100%{ transform:translate(var(--tx), var(--ty)) scale(1) rotate(360deg); }
+}
+
+/* Bet moved with one click: short hop from the old zone to the new one */
+.table-chip.chip-jump{
+  animation:chipJump .80s cubic-bezier(.30,.10,.55,1) forwards;
+}
+
+@keyframes chipJump{
+  0%{   transform:translate(0,0) scale(1); }
+  50%{  transform:translate(calc(var(--tx) * .5), calc(var(--ty) * .5 - 55px)) scale(1.12); }
+  100%{ transform:translate(var(--tx), var(--ty)) scale(1); }
+}
+
+.table-chip{
+  position:absolute;
+  width:33px;
+  height:33px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  font-weight:900;
+  font-size:11px;
+  text-shadow:none;
+  pointer-events:none;           /* clicking a chip = clicking the bet zone */
+  user-select:none;
+  border:3px solid #fff;
+  box-shadow:0 2px 5px rgba(0,0,0,.45), inset 0 0 0 4px rgba(0,0,0,.10);
+}
+
+.table-chip.chip-lose{
+  animation:chipToDealer .90s ease-in forwards;
+}
+
+.table-chip.chip-collect{
+  animation:chipToPlayer .90s ease-in forwards;
+}
+
+@keyframes chipToDealer{
+  0%{   transform:translate(0,0) scale(1) rotate(0deg); opacity:1; }
+  100%{ transform:translate(var(--tx), var(--ty)) scale(.35) rotate(540deg); opacity:0; }
+}
+
+@keyframes chipToPlayer{
+  0%{   transform:translate(0,0) scale(1); opacity:1; }
+  100%{ transform:translate(var(--tx), var(--ty)) scale(.45); opacity:0; }
+}
+
+/* ------------------------------------------------------------------------
+   16. UTILITIES
+   ------------------------------------------------------------------------ */
+.hidden{
+  display:none;
+}
+
+.disabled{
+  opacity:.45;
+  pointer-events:none;
+}
+
+/* Bet zones while dealing: locked but NOT dimmed, so the chips resting
+   on the table stay perfectly visible until the hand is resolved. */
+.bet-zone.disabled{
+  opacity:1;
+  pointer-events:none;
+  filter:saturate(.75) brightness(.92);
+}
+
+
+/* ------------------------------------------------------------------------
+   17. RESPONSIVE (narrow screens) — columns stack:
+   betting area on top, history below.
+   ------------------------------------------------------------------------ */
+@media (max-width:1000px){
+  .app{
+    height:auto;
+    padding:0;
+  }
+  .main-panel{
+    grid-template-columns:1fr;
+    height:auto;
+    border-radius:0;
+  }
+  .menu-panel{
+    order:3;                   /* menu moves below the chat */
+    border-right:none;
+    border-top:1px solid var(--panel-border);
+  }
+  .betting-panel{
+    order:1;
+    min-height:600px;
+  }
+  /* Chat right below the table, with a fixed height so it stays usable */
+  .chat-panel{
+    order:2;
+    height:360px;
+    border-left:none;
+    border-top:1px solid var(--panel-border);
+  }
+  .deal-area{
+    grid-template-columns:1fr;
+  }
+  /* On narrow screens the roads stack vertically and center */
+  .history-container{
+    flex-direction:column;
+    align-items:center;
+    gap:16px;
+  }
+  /* No room to the right on phones: the dropdown opens BELOW the chip */
+  .custom-chip-panel{
+    left:50%;
+    top:calc(100% + 20px);
+    transform:translateX(-50%);
+  }
+}
+
+/*
+   18. QUICK EDIT GUIDE
+   --------------------------------------------------------------------------
+   "I want to change..."                        → Go to...
+   -----------------------------------------------------------------------
+   Player / Banker / Tie colors (marks, totals) → Section 1: --player /
+                                                   --banker / --tie
+   PLAYER / BANKER title colors                 → Section 5: .hand-panel
+                                                   h2.player / h2.banker
+   Stats box (#/ P/ B/ T/) colors               → Section 4b: .stats-box
+                                                   (.stat-hand/.stat-player/
+                                                   .stat-banker/.stat-tie)
+   Betting area background (right, sky blue)    → Section 1: --betting-bg
+   Menu area background (left, dark blue)       → Section 1: --menu-bg
+   15% / 70% / 15% column split                       → Section 3: .main-panel
+                                                   (grid-template-columns)
+   Margin around the main panel                 → Section 3: .app (padding)
+   Surface boxes (status, controls, input)      → Section 1: --surface-a/-b
+   Bet zone colors                              → Section 1: --bet-*
+   Timer font size                              → Section 6: .timer-ring-wrap
+                                                   .timer (font-size)
+   Timer ring colors (green/red) and size       → Section 6: .timer-ring
+   Timer alert look (red texts + glow)          → Section 6: .timer-panel
+                                                   .warning (bg no longer
+                                                   changes — ring shows it)
+   Chip colors ($1, $5, $10, $50, $100, custom) → Section 1: --chip-*
+   Custom chip range/steps ($15-$10K, $5)       → index.html (input min/max/
+                                                   step) + js/app.js
+                                                   (getCustomChipValue)
+   Chip button size (circle)                    → Section 9: .chips button
+   (+) badge on the custom chip (color/size)    → Section 9: #customMenuBtn
+   Chip flight speed                            → Section 15: animation .5s
+   "YOU WIN!" text/color                        → Section 10 + Section 1
+                                                   (--win-color)
+   Balance font size/color                      → Section 4: .status-box
+                                                   (the balance lives there)
+   Starting balance ($1,023.00)                 → js/app.js (balance=1023)
+                                                   + index.html top bar
+   Menu links (size, color, hover, active)      → Section 12: .menu-panel
+   Menu ITEMS (add/remove/rename links)         → js/menu.js, MENU_ITEMS
+                                                   (ONE place, whole site)
+   Chat background / text color / font size     → Section 1: --chat-bg /
+                                                   --chat-text / --chat-size
+   Chat name colors (ADMIN/MOD/player)          → Section 1: --chat-admin /
+                                                   --chat-mod / --chat-user
+   Chat panel layout (header, pinned, compose)  → Section 12c: .chat-*
+   Chat rules text / role / cooldown / slow     → js/chat.js, CHAT_CFG
+   Pinned announcement look                     → Section 12c: .chat-pinned
+   Custom chip dropdown position/look           → Section 9: .custom-chip-panel
+   Space between the two road boxes             → Section 13: .history-container
+                                                   (gap)
+   Position of each road box                    → index.html: move or style
+                                                   each .history-box
+   Road cell size                               → Section 1: --cell
+   Road board/lines colors                      → Section 1: --road-bg /
+                                                   --road-line
+   Developer panel look                         → Section 14: .dev-panel
+   Engine Report button (bottom of the menu)    → Section 12: .menu-report-btn
+   Engine Report modal (panel, header, buttons) → Section 14b: .report-*
+   Report hands count / theory values           → js/app.js, ENGINE REPORT
+                                                   module (REPORT_HANDS_DEFAULT,
+                                                   THEORY)
+   Timer SECONDS (12s bet, 3s pause, alert 6)   → js/app.js, CFG line at top
+
+   GOLDEN RULE: every class lives in ONE place. Search ".bet-zone" or
+   ".chips button" and you will find it once — edit there with no risk
+   of another block overriding it below. 
+    
+   */
+
+/* ------------------------------------------------------------------------
+   19. LOGIN / SESSION (fase 2.1)
+   Botón "Log out" del menú compartido (lo crea js/menu.js; js/auth.js
+   cierra la sesión). En modo local sin servidor el botón se oculta solo.
+   ------------------------------------------------------------------------ */
+.menu-logout-btn{
+  margin-top:8px;
+  width:100%;
+  padding:7px 10px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#fff;
+  background:transparent;
+  border:1px solid var(--surface-border);
+  border-radius:6px;
+  cursor:pointer;
+}
+.menu-logout-btn:hover{
+  border-color:var(--gold);
+  color:var(--gold);
+}

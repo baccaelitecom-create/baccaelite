@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BaccaElite.com: Leaderboard</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Estilos SOLO del leaderboard (performance first: CSS puro, una
+       animación simple de entrada, cero librerías). -->
+  <style>
+    .lb-wrap{
+      display:flex;
+      flex-direction:column;
+      align-items:center;      /* center-aligned, as specified */
+      gap:8px;
+      max-width:560px;
+      margin:10px auto 0;
+    }
+    .lb-row{
+      display:flex;
+      align-items:center;
+      gap:14px;
+      width:100%;
+      padding:9px 16px;
+      border-radius:10px;
+      background:#ffffe0;
+      border:2px solid #00008b;
+      cursor:pointer;
+      transition:transform .12s, box-shadow .12s;
+    }
+    .lb-row:hover{
+      transform:translateY(-1px);
+      box-shadow:0 4px 10px rgba(0,0,50,.22);
+    }
+    .lb-rank{
+      width:38px;
+      font-size:16px;
+      font-weight:900;
+      color:#00008b;
+      text-align:center;
+    }
+    .lb-name{
+      flex:1;
+      font-size:15px;
+      font-weight:800;
+      color:#00223a;
+    }
+    .lb-level{
+      font-size:12px;
+      font-weight:700;
+      padding:2px 10px;
+      border-radius:999px;
+      color:#fff;
+      background:#00008b;
+    }
+    .lb-xp{
+      width:92px;
+      text-align:right;
+      font-size:13px;
+      font-weight:700;
+      color:#008000;
+    }
+    /* Top 3 highlight */
+    .lb-row.top1{ border-color:#c9a400; background:#fff7cf; }
+    .lb-row.top2{ border-color:#8a8a8a; background:#f2f2f2; }
+    .lb-row.top3{ border-color:#a5622a; background:#f9e9dc; }
+
+    /* ---------- Profile window (simple modal) ---------- */
+    .lb-overlay{
+      position:fixed;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(0,0,40,.55);
+      z-index:50;
+    }
+    .lb-overlay.hidden{ display:none; }
+    .lb-card{
+      width:min(340px,92vw);
+      padding:18px 20px;
+      border-radius:14px;
+      background:#fff;
+      border:3px solid #00008b;
+      box-shadow:0 10px 30px rgba(0,0,50,.35);
+      animation:lbPop .15s ease-out;
+    }
+    @keyframes lbPop{ from{transform:scale(.94);opacity:.4} to{transform:scale(1);opacity:1} }
+    .lb-card h3{
+      margin:0 0 4px;
+      font-size:20px;
+      color:#00008b;
+    }
+    .lb-card .lb-card-level{
+      display:inline-block;
+      margin-bottom:10px;
+      font-size:12px;
+      font-weight:800;
+      padding:2px 12px;
+      border-radius:999px;
+      color:#fff;
+      background:#00008b;
+    }
+    .lb-card p{
+      margin:5px 0;
+      font-size:13px;
+      color:#00223a;
+    }
+    .lb-card p strong{ color:#00008b; }
+    .lb-card .lb-close{
+      margin-top:12px;
+      width:100%;
+      padding:8px 0;
+      border:none;
+      border-radius:8px;
+      font-weight:900;
+      color:#fff;
+      background:#00008b;
+      cursor:pointer;
+    }
+    .lb-card .lb-close:hover{ background:#008000; }
+    .lb-note{
+      margin:14px auto 0;
+      max-width:560px;
+      font-size:12px;
+      font-style:italic;
+      color:#00223a;
+      text-align:center;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="main-panel">
+
+      <!-- ============ LEFT 15%: MENU AREA ============
+           SHARED MENU: js/menu.js fills this on every page. -->
+      <aside class="menu-panel" id="sharedMenu"></aside>
+
+      <!-- ============ CENTER 70%: CONTENIDO DE LA SECCIÓN ============ -->
+      <section class="betting-panel">
+
+        <h1 class="page-title">Leaderboard</h1>
+
+        <!-- Ranking rows are generated from the DEMO_PLAYERS list in the
+             script below, sorted by XP (highest first).
+             FASE 2: the server replaces DEMO_PLAYERS with live data via
+             the same channel as the chat — this HTML does not change. -->
+        <div class="lb-wrap" id="lbWrap"></div>
+
+        <p class="lb-note">
+          Ranked by total XP (1 XP per $1 of net winnings). Click any
+          player to see their public profile. Win percentage appears only
+          for players who chose to make it public in their Settings.
+        </p>
+
+        <!-- Profile window -->
+        <div class="lb-overlay hidden" id="lbOverlay">
+          <div class="lb-card">
+            <h3 id="lbCardName">Player</h3>
+            <span class="lb-card-level" id="lbCardLevel">Bronze</span>
+            <p><strong>Rank:</strong> <span id="lbCardRank">-</span></p>
+            <p><strong>Total XP:</strong> <span id="lbCardXp">0</span></p>
+            <p><strong>Member since:</strong> <span id="lbCardSince">-</span></p>
+            <p><strong>Win percentage:</strong> <span id="lbCardWin">Private</span></p>
+            <button class="lb-close" id="lbCloseBtn" type="button">Close</button>
+          </div>
+        </div>
+
+      </section><!-- /betting-panel -->
+
+      <!-- ============ RIGHT 15%: GLOBAL CHAT ============ -->
+      <aside class="chat-panel" id="chatPanel">
+
+        <header class="chat-head">
+          <span class="chat-title">💬 Chat Global</span>
+          <span class="chat-online" title="Conectados">● <strong id="chatOnline">1</strong></span>
+          <span class="chat-head-btns">
+            <button id="chatSoundBtn"  type="button" title="Sonido de mensajes">🔔</button>
+            <button id="chatRulesBtn"  type="button" title="Reglas del chat">ℹ</button>
+            <button id="chatModBtn"    type="button" class="mod-only" title="Herramientas de moderación">🛡</button>
+          </span>
+        </header>
+
+        <div id="chatPinned" class="chat-pinned hidden">
+          <div class="chat-pinned-tag">📌 ANUNCIO OFICIAL</div>
+          <div id="chatPinnedText" class="chat-pinned-text"></div>
+          <button id="chatPinnedClose" type="button" class="mod-only" title="Quitar anuncio">×</button>
+        </div>
+
+        <div id="chatModTools" class="chat-mod-tools hidden">
+          <button id="modAnnounceBtn" type="button">📌 Anuncio</button>
+          <button id="modSlowBtn"     type="button">🐢 Slow</button>
+          <button id="modClearBtn"    type="button">🧹 Limpiar</button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <button id="chatNewMsgs" class="chat-newmsgs hidden" type="button">▼ Nuevos mensajes</button>
+
+        <div id="chatNotice" class="chat-notice hidden"></div>
+
+        <div id="chatEmojiPanel" class="chat-emoji hidden"></div>
+
+        <footer class="chat-compose">
+          <button id="chatEmojiBtn" type="button" title="Emojis">😊</button>
+          <input id="chatInput" type="text" maxlength="200" autocomplete="off"
+                 placeholder="Escribe un mensaje… (/ayuda)" />
+          <button id="chatSendBtn" type="button" title="Enviar">➤</button>
+        </footer>
+        <div class="chat-meta">
+          <span id="chatCharCount">0/200</span>
+          <span id="chatSlowTag" class="hidden">🐢 slow <strong id="chatSlowSecs">10</strong>s</span>
+        </div>
+
+      </aside><!-- /chat-panel -->
+
+    </section><!-- /main-panel -->
+  </main>
+
+  <!-- SESSION GUARD (fase 2.1): auth.js debe cargar ANTES de menu.js.
+       Redirige a login.html si no hay sesion y llena el bloque de usuario. -->
+  <script src="js/auth.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/chat.js"></script>
+
+  <script>
+  /* ===================================================================
+     LEADERBOARD — performance first: one render pass, one shared modal,
+     event delegation (a single click listener for the whole list).
+     DEMO_PLAYERS is demo data; FASE 2 replaces it with server data.
+     winPct:null means the player keeps it private (default).
+     =================================================================== */
+  (function initLeaderboard(){
+    const LEVELS=[
+      {name:'Bronze',xp:0},{name:'Silver',xp:1e4},{name:'Gold',xp:1e5},
+      {name:'Platinum',xp:1e6},{name:'Diamond',xp:1e7},{name:'Elite',xp:1e8},
+      {name:'Stellar',xp:1e9},{name:'Legend',xp:1e10}
+    ];
+    const levelOf=xp=>{let l=LEVELS[0];for(const lv of LEVELS){if(xp>=lv.xp)l=lv;}return l.name;};
+
+    const DEMO_PLAYERS=[
+      {name:'Jasor',      xp:8000,     since:'April 22, 2026',  winPct:53.33},
+      {name:'BaccQueen',  xp:1250000,  since:'March 3, 2026',   winPct:49.8},
+      {name:'DragonTiger',xp:940000,   since:'March 1, 2026',   winPct:null},
+      {name:'LuckySeven', xp:410000,   since:'March 15, 2026',  winPct:51.2},
+      {name:'ShoeReader', xp:98000,    since:'April 2, 2026',   winPct:null},
+      {name:'MartinGale', xp:76000,    since:'March 22, 2026',  winPct:null},
+      {name:'FibonacciFan',xp:35500,   since:'May 9, 2026',     winPct:48.9},
+      {name:'ParoliPro',  xp:22100,    since:'May 30, 2026',    winPct:null},
+      {name:'TieHunter',  xp:15800,    since:'June 6, 2026',    winPct:null},
+      {name:'NaturalNine',xp:9400,     since:'June 21, 2026',   winPct:null}
+    ];
+
+    const list=[...DEMO_PLAYERS].sort((a,b)=>b.xp-a.xp);
+    const wrap=document.getElementById('lbWrap');
+    if(!wrap)return;
+
+    wrap.innerHTML=list.map((p,i)=>{
+      const rank=i+1;
+      const medal=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
+      const cls='lb-row'+(rank<=3?' top'+rank:'');
+      return `
+        <div class="${cls}" data-i="${i}">
+          <span class="lb-rank">${medal}</span>
+          <span class="lb-name">${p.name}</span>
+          <span class="lb-level">${levelOf(p.xp)}</span>
+          <span class="lb-xp">${p.xp.toLocaleString('en-US')} XP</span>
+        </div>`;
+    }).join('');
+
+    /* One listener for the whole list (event delegation) */
+    const overlay=document.getElementById('lbOverlay');
+    wrap.addEventListener('click',e=>{
+      const row=e.target.closest('.lb-row');if(!row)return;
+      const p=list[Number(row.dataset.i)];if(!p)return;
+      document.getElementById('lbCardName').textContent=p.name;
+      document.getElementById('lbCardLevel').textContent=levelOf(p.xp);
+      document.getElementById('lbCardRank').textContent='#'+(Number(row.dataset.i)+1);
+      document.getElementById('lbCardXp').textContent=p.xp.toLocaleString('en-US');
+      document.getElementById('lbCardSince').textContent=p.since;
+      document.getElementById('lbCardWin').textContent=
+        p.winPct==null?'Private':p.winPct.toFixed(2)+'%';
+      overlay.classList.remove('hidden');
+    });
+    document.getElementById('lbCloseBtn').onclick=()=>overlay.classList.add('hidden');
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.classList.add('hidden');});
+  })();
+  </script>
+</body>
+</html>

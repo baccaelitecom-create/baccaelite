@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BaccaElite.com: Account</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Estilos SOLO de settings (performance first, animación mínima:
+       solo la barra de progreso se llena con una transición). -->
+  <style>
+    .se-wrap{ max-width:640px; }
+    .se-card{
+      margin-top:12px;
+      padding:16px 18px;
+      border-radius:12px;
+      background:#ffffe0;
+      border:2px solid #00008b;
+    }
+    .se-card h2{
+      margin:0 0 10px;
+      font-size:17px;
+      font-weight:900;
+      color:#00008b;
+      border-bottom:2px solid #00008b;
+      padding-bottom:3px;
+    }
+    .se-row{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      padding:5px 0;
+      font-size:13px;
+      color:#00223a;
+    }
+    .se-row .se-k{ font-weight:800; color:#00008b; }
+    .se-verified{
+      font-size:11px;
+      font-weight:800;
+      color:#008000;
+    }
+    /* ---------- Balance reset button ---------- */
+    .se-reset-btn{
+      margin-top:8px;
+      width:100%;
+      padding:8px 0;
+      border-radius:8px;
+      font-size:13px;
+      font-weight:900;
+      letter-spacing:.3px;
+      border:2px solid #00008b;
+      background:#00008b;
+      color:#ffd61f;
+      cursor:pointer;
+      transition:filter .15s;
+    }
+    .se-reset-btn:hover:not(:disabled){ filter:brightness(1.15); }
+    .se-reset-btn:disabled{
+      background:#e6e6e6;
+      border-color:#aaa;
+      color:#999;
+      cursor:not-allowed;
+    }
+    .se-reset-msg{
+      margin-top:6px;
+      font-size:12px;
+      font-weight:700;
+      color:#008000;
+      min-height:15px;
+    }
+    /* ---------- Level progress bar ---------- */
+    .se-level-line{
+      display:flex;
+      justify-content:space-between;
+      font-size:13px;
+      font-weight:800;
+      color:#00008b;
+      margin-bottom:4px;
+    }
+    .se-bar{
+      height:16px;
+      border-radius:999px;
+      background:#e6e6e6;
+      border:1px solid #00008b;
+      overflow:hidden;
+    }
+    .se-bar-fill{
+      height:100%;
+      width:0%;                       /* JS sets the real % */
+      border-radius:999px;
+      background:linear-gradient(90deg,#1fd655,#008000);
+      transition:width .8s ease-out;  /* simple fill animation */
+    }
+    /* ---------- Preferences ---------- */
+    .se-pref{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:8px 0;
+      font-size:13px;
+      color:#00223a;
+      border-top:1px dashed #00008b;
+    }
+    .se-pref:first-of-type{ border-top:none; }
+    .se-pref .se-pk{ font-weight:800; color:#00008b; }
+    .se-pref small{ display:block; font-weight:400; color:#00223a; }
+    .se-pref select{
+      padding:4px 8px;
+      border:2px solid #00008b;
+      border-radius:8px;
+      font-weight:700;
+      color:#00008b;
+      background:#fff;
+    }
+    .se-private{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:10px;
+      font-size:12px;
+      background:#eef4ff;
+      border:1px dashed #00008b;
+      color:#00223a;
+    }
+    .se-note{
+      max-width:640px;
+      margin-top:14px;
+      font-size:12px;
+      font-style:italic;
+      color:#00223a;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="main-panel">
+
+      <!-- ============ LEFT 15%: MENU AREA ============ -->
+      <aside class="menu-panel" id="sharedMenu"></aside>
+
+      <!-- ============ CENTER 70%: CONTENIDO DE LA SECCIÓN ============ -->
+      <section class="betting-panel">
+
+        <h1 class="page-title">Account</h1>
+
+        <!-- Reached from the USER AVATAR in the shared menu (js/menu.js),
+             not from the menu links. DEMO account data below; FASE 2
+             fills every value from the real account (same source as the
+             chat login). Preferences save locally for now. -->
+        <div class="se-wrap">
+
+          <div class="se-card">
+            <h2>Account Information</h2>
+            <div class="se-row"><span class="se-k">Username</span><span id="seUser">Jasor</span></div>
+            <div class="se-row"><span class="se-k">Member since</span><span id="seSince">April 22, 2026</span></div>
+            <div class="se-row"><span class="se-k">Email</span><span id="seEmail">jasor64@gmail.com <span class="se-verified">✔ verified</span></span></div>
+            <div class="se-row"><span class="se-k">Current balance</span><span id="seBalance">$2,000.70</span></div>
+            <div class="se-row"><span class="se-k">Total XP</span><span id="seXpTotal">0 XP</span></div>
+            <!-- BALANCE RESET (fase 2.3): solo se ACTIVA si el balance
+                 baja de $900.00 (regla oficial en rules.html). El
+                 servidor valida la regla otra vez — el botón es solo
+                 la puerta, no el juez. -->
+            <button id="seResetBtn" class="se-reset-btn" type="button" disabled
+                    title="Available when your balance falls below $900.00">
+              ↺ Reset balance to $1,023.00
+            </button>
+            <div id="seResetMsg" class="se-reset-msg"></div>
+          </div>
+
+          <div class="se-card">
+            <h2>Level Progress</h2>
+            <div class="se-level-line">
+              <span id="seLevelName">Bronze</span>
+              <span id="seLevelPct">80% to Silver</span>
+            </div>
+            <div class="se-bar"><div class="se-bar-fill" id="seBarFill"></div></div>
+          </div>
+
+          <div class="se-card">
+            <h2>Play Record</h2>
+            <div class="se-row"><span class="se-k">Total plays</span><span id="sePlays">1,500</span></div>
+            <div class="se-row"><span class="se-k">Plays won</span><span id="seWon">800</span></div>
+            <div class="se-row"><span class="se-k">Plays lost</span><span id="seLost">700</span></div>
+            <div class="se-row"><span class="se-k">Win percentage</span><span id="seWinPct">53.33%</span></div>
+            <div class="se-row"><span class="se-k">Tournaments played</span><span id="seTPlayed">12</span></div>
+            <div class="se-row"><span class="se-k">Tournaments won</span><span id="seTWon">4</span></div>
+            <div class="se-row"><span class="se-k">Tournaments lost</span><span id="seTLost">8</span></div>
+          </div>
+
+          <div class="se-card">
+            <h2>Preferences</h2>
+
+            <div class="se-pref">
+              <span class="se-pk">Language
+                <small>Interface language</small>
+              </span>
+              <select id="seLang">
+                <option value="en" selected>English</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+
+            <div class="se-pref">
+              <span class="se-pk">Public win percentage
+                <small>Show your win % on your leaderboard profile.
+                Private by default.</small>
+              </span>
+              <input type="checkbox" id="seWinPublic" />
+            </div>
+
+            <div class="se-private">
+              <strong>Efficiency percentage (private):</strong>
+              <span id="seEff">53.33%</span><br />
+              Wins divided by total bets placed. Visible only to you and
+              the site administrator — used for fraud detection against
+              potential hackers and AI bots. It is never public.
+            </div>
+          </div>
+
+        </div>
+
+        <p class="se-note">
+          Account changes (email, password, deleting the account) will be
+          available when accounts go live. Preferences on this page save
+          on this device for now.
+        </p>
+
+      </section><!-- /betting-panel -->
+
+      <!-- ============ RIGHT 15%: GLOBAL CHAT ============ -->
+      <aside class="chat-panel" id="chatPanel">
+
+        <header class="chat-head">
+          <span class="chat-title">💬 Chat Global</span>
+          <span class="chat-online" title="Conectados">● <strong id="chatOnline">1</strong></span>
+          <span class="chat-head-btns">
+            <button id="chatSoundBtn"  type="button" title="Sonido de mensajes">🔔</button>
+            <button id="chatRulesBtn"  type="button" title="Reglas del chat">ℹ</button>
+            <button id="chatModBtn"    type="button" class="mod-only" title="Herramientas de moderación">🛡</button>
+          </span>
+        </header>
+
+        <div id="chatPinned" class="chat-pinned hidden">
+          <div class="chat-pinned-tag">📌 ANUNCIO OFICIAL</div>
+          <div id="chatPinnedText" class="chat-pinned-text"></div>
+          <button id="chatPinnedClose" type="button" class="mod-only" title="Quitar anuncio">×</button>
+        </div>
+
+        <div id="chatModTools" class="chat-mod-tools hidden">
+          <button id="modAnnounceBtn" type="button">📌 Anuncio</button>
+          <button id="modSlowBtn"     type="button">🐢 Slow</button>
+          <button id="modClearBtn"    type="button">🧹 Limpiar</button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <button id="chatNewMsgs" class="chat-newmsgs hidden" type="button">▼ Nuevos mensajes</button>
+
+        <div id="chatNotice" class="chat-notice hidden"></div>
+
+        <div id="chatEmojiPanel" class="chat-emoji hidden"></div>
+
+        <footer class="chat-compose">
+          <button id="chatEmojiBtn" type="button" title="Emojis">😊</button>
+          <input id="chatInput" type="text" maxlength="200" autocomplete="off"
+                 placeholder="Escribe un mensaje… (/ayuda)" />
+          <button id="chatSendBtn" type="button" title="Enviar">➤</button>
+        </footer>
+        <div class="chat-meta">
+          <span id="chatCharCount">0/200</span>
+          <span id="chatSlowTag" class="hidden">🐢 slow <strong id="chatSlowSecs">10</strong>s</span>
+        </div>
+
+      </aside><!-- /chat-panel -->
+
+    </section><!-- /main-panel -->
+  </main>
+
+  <!-- SESSION GUARD (fase 2.1): auth.js debe cargar ANTES de menu.js.
+       Redirige a login.html si no hay sesion y llena el bloque de usuario. -->
+  <script src="js/auth.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/chat.js"></script>
+
+  <script>
+  /* ===================================================================
+     FASE 2.1 — el Username sale de la SESIÓN real (js/auth.js).
+     Email, member since, balance y record siguen siendo demo hasta el
+     paso 3 (balance/XP en el servidor). En modo local (sin servidor)
+     se queda el valor de demostración.
+     =================================================================== */
+  if(window.BaccaAuth){
+    BaccaAuth.ready.then(u=>{
+      if(u) document.getElementById('seUser').textContent=u.name;
+    });
+  }
+  </script>
+
+  <script>
+  /* ===================================================================
+     ACCOUNT — FASE 2.3: los datos salen de la CUENTA en el servidor
+     (GET /api/state): balance real, nivel/XP real, fecha de registro
+     real y play record real. Email sigue siendo demo (llega con el
+     hosting + verificación por correo). Las preferencias se guardan
+     en este dispositivo por ahora.
+     MODO LOCAL (sin servidor): se mantiene el comportamiento anterior.
+     =================================================================== */
+  (async function initSettings(){
+    const LEVELS=[
+      {name:'Bronze',xp:0},{name:'Silver',xp:1e4},{name:'Gold',xp:1e5},
+      {name:'Platinum',xp:1e6},{name:'Diamond',xp:1e7},{name:'Elite',xp:1e8},
+      {name:'Stellar',xp:1e9},{name:'Legend',xp:1e10}
+    ];
+    let xp=0,balance=null,since=null,record=null;
+
+    /* ----- 1) Cuenta real (servidor) ----- */
+    let fromServer=false;
+    if(window.BaccaAuth){
+      const u=await BaccaAuth.ready;
+      if(u){
+        try{
+          const r=await fetch('/api/state');
+          if(r.ok){
+            const s=await r.json();
+            fromServer=true;
+            xp=s.xp||0;
+            balance=s.balance;
+            since=s.createdAt||null;
+            record=s.record||null;
+          }
+        }catch(e){}
+      }
+    }
+    /* ----- fallback: modo local (demo sin servidor) ----- */
+    if(!fromServer){
+      try{
+        const s=JSON.parse(localStorage.getItem('be_save'));
+        if(s&&Number.isFinite(s.xp))xp=s.xp;
+        if(s&&Number.isFinite(s.balance))balance=s.balance;
+      }catch(e){}
+    }
+
+    /* ----- 2) Level progress ----- */
+    let li=0;for(let i=0;i<LEVELS.length;i++){if(xp>=LEVELS[i].xp)li=i;}
+    const cur=LEVELS[li],next=LEVELS[li+1]||null;
+    const pct=next?Math.min(100,Math.floor((xp-cur.xp)/(next.xp-cur.xp)*100)):100;
+
+    document.getElementById('seLevelName').textContent=
+      cur.name+' — '+xp.toLocaleString('en-US')+' XP';
+    document.getElementById('seLevelPct').textContent=
+      next?pct+'% to '+next.name:'Max level reached';
+    /* números exactos al pasar el mouse por la barra */
+    document.querySelector('.se-bar').title=next
+      ?xp.toLocaleString('en-US')+' / '+next.xp.toLocaleString('en-US')+' XP — faltan '
+        +(next.xp-xp).toLocaleString('en-US')+' XP para '+next.name
+      :xp.toLocaleString('en-US')+' XP — nivel máximo';
+    /* Fill after paint so the transition animates once */
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      document.getElementById('seBarFill').style.width=pct+'%';
+    }));
+    if(balance!=null){
+      document.getElementById('seBalance').textContent=
+        '$'+balance.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    /* Total XP — misma fuente que el balance (la cuenta), debajo de él */
+    document.getElementById('seXpTotal').textContent=
+      xp.toLocaleString('en-US')+' XP';
+
+    /* ----- Balance reset button (solo con cuenta real) ----- */
+    const resetBtn=document.getElementById('seResetBtn');
+    const resetMsg=document.getElementById('seResetMsg');
+    function fmtMoney(n){
+      return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    function armResetBtn(){
+      /* Se ACTIVA únicamente bajo $900.00 — con más, queda gris para
+         evitar un clic accidental. */
+      resetBtn.disabled=!(fromServer&&balance!=null&&balance<900);
+    }
+    armResetBtn();
+    if(!fromServer)resetBtn.style.display='none';   // modo local: no hay cuenta
+    resetBtn.onclick=async()=>{
+      if(resetBtn.disabled)return;
+      resetBtn.disabled=true;
+      try{
+        const r=await fetch('/api/balance-reset',{method:'POST'});
+        const s=await r.json();
+        if(!r.ok){resetMsg.style.color='#a40000';resetMsg.textContent=s.error||'No disponible.';armResetBtn();return;}
+        balance=s.balance;
+        document.getElementById('seBalance').textContent=fmtMoney(balance);
+        resetMsg.style.color='#008000';
+        resetMsg.textContent='✔ Balance reset to '+fmtMoney(balance)+'. Good luck!';
+        armResetBtn();                               // vuelve a gris (ya tienes $1,023)
+      }catch(e){
+        resetMsg.style.color='#a40000';
+        resetMsg.textContent='Cannot reach the server.';
+        armResetBtn();
+      }
+    };
+
+    /* ----- 3) Member since + Play Record (solo con cuenta real) ----- */
+    if(since){
+      document.getElementById('seSince').textContent=
+        new Date(since).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+    }
+    if(record){
+      const plays=record.plays||0,won=record.won||0,lost=record.lost||0;
+      document.getElementById('sePlays').textContent=plays.toLocaleString('en-US');
+      document.getElementById('seWon').textContent=won.toLocaleString('en-US');
+      document.getElementById('seLost').textContent=lost.toLocaleString('en-US');
+      const winPct=plays>0?(won/plays*100).toFixed(2)+'%':'—';
+      document.getElementById('seWinPct').textContent=winPct;
+      document.getElementById('seEff').textContent=winPct;
+      /* Torneos: demo hasta el paso 5 */
+      document.getElementById('seTPlayed').textContent='0';
+      document.getElementById('seTWon').textContent='0';
+      document.getElementById('seTLost').textContent='0';
+    }
+
+    /* ----- 4) Preferences (saved on this device for now) ----- */
+    const PREFS_KEY='be_prefs';
+    let prefs={lang:'en',winPublic:false};
+    try{
+      const p=JSON.parse(localStorage.getItem(PREFS_KEY));
+      if(p)prefs={...prefs,...p};
+    }catch(e){}
+    const langSel=document.getElementById('seLang');
+    const winChk=document.getElementById('seWinPublic');
+    langSel.value=prefs.lang;
+    winChk.checked=prefs.winPublic;
+    function savePrefs(){
+      try{localStorage.setItem(PREFS_KEY,JSON.stringify(prefs));}catch(e){}
+    }
+    langSel.onchange=()=>{prefs.lang=langSel.value;savePrefs();};
+    winChk.onchange=()=>{prefs.winPublic=winChk.checked;savePrefs();};
+  })();
+  </script>
+</body>
+</html>

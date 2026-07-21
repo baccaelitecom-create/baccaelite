@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BaccaElite.com: Most Realistic Simulator</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="app">
+
+    <!-- ================================================================
+         SINGLE MAIN PANEL — three columns:
+         LEFT   15% = Menu area     (.menu-panel,    background #00008B)
+         CENTER 70% = Betting area  (.betting-panel, background #87CEEB)
+         RIGHT  15% = Global chat   (.chat-panel,    background #00008B)
+         All IDs used by app.js are unchanged. Chat logic: js/chat.js.
+         ================================================================ -->
+    <section class="main-panel">
+
+      <!-- ============ LEFT 15%: MENU AREA ============
+           SHARED MENU: this <aside> stays EMPTY. js/menu.js fills it on
+           every page (links + user block + Engine Report button). To edit
+           the menu, edit MENU_ITEMS in js/menu.js — ONE place, whole site. -->
+      <aside class="menu-panel" id="sharedMenu"></aside>
+
+      <!-- ============ Center 70%: BETTING AREA ============ -->
+      <section class="betting-panel">
+
+        <header class="topbar">
+
+          <!-- ONE single top bar row: table info (left) + Free Token
+               (center) + stats box (right). Sizes live in css section 4. -->
+          <div class="status-box">
+            <span>BaccaElite.com</span>
+            <span>Shoe: <strong id="shoeNumber">1</strong></span>
+            <span>Cards Left: <strong id="cardsLeft">0</strong></span>
+            <span>Balance: $<strong id="balance">1023.00</strong></span>
+          </div>
+
+          <!-- FREE TOKEN — daily bonus (24h): logic in js/app.js, look in
+               css section 4c. Active: "🎁 Free Token". Claimed: countdown. -->
+          <button id="freeTokenBtn" class="free-token-btn" type="button">🎁 Free Token</button>
+
+          <!-- STATS BOX — colors and look are controlled in css/style.css,
+               section 4b (.stats-box and .stat-hand/.stat-player/
+               .stat-banker/.stat-tie).                                   -->
+          <div class="stats-box">
+            <span class="stat-hand"># <strong id="handNumber">0</strong></span>
+            <span class="stat-player">P : <strong id="statPlayer">0</strong></span>
+            <span class="stat-banker">B : <strong id="statBanker">0</strong></span>
+            <span class="stat-tie">T : <strong id="statTie">0</strong></span>
+          </div>
+        </header>
+
+        <!-- Three columns, exactly like your marked screenshot:
+             each hand with its bet zone right below it.                 -->
+        <section class="deal-area">
+
+          <div class="table-column">
+            <div class="hand-panel">
+              <h2 class="player">PLAYER</h2>
+              <div id="playerCards" class="cards"></div>
+              <div class="total player" id="playerTotal">0</div>
+            </div>
+            <button class="bet-zone player" data-bet="PLAYER">PLAYER<br><span id="betPlayer">0</span></button>
+          </div>
+
+          <div class="table-column">
+            <div class="timer-panel">
+              <!-- Shoe message: "New Shoe." / "Current Shoe.." / "Last Hand!"
+                   Updated by app.js at the start of each countdown.
+                   "Last Hand!" and "New Shoe." also trigger a voice clip. -->
+              <div class="timer-label"><div id="shoeMessage" class="shoe-inline">New Shoe.</div></div>
+              <div id="timer" class="timer">12</div>
+              <div id="phase" class="phase">Place Your Bets</div>
+            </div>
+            <button class="bet-zone tie" data-bet="TIE">TIE<br><span id="betTie">0</span></button>
+          </div>
+
+          <div class="table-column">
+            <div class="hand-panel">
+              <h2 class="banker">BANKER</h2>
+              <div id="bankerCards" class="cards"></div>
+              <div class="total banker" id="bankerTotal">0</div>
+            </div>
+            <button class="bet-zone banker" data-bet="BANKER">BANKER<br><span id="betBanker">0</span></button>
+          </div>
+
+        </section>
+
+
+        <section class="control-area">
+          <button id="rebetBtn">Re-bet</button>
+          <button id="doubleBtn">X2</button>
+          <button id="clearBtn">↩</button>
+        </section>
+
+        <!-- Official chip values: $1, $5, $10, $50, $100 + custom -->
+        <section class="chips" id="chips">
+          <button data-chip="1">1</button>
+          <button data-chip="5">5</button>
+          <button data-chip="10">10</button>
+          <button data-chip="50">50</button>
+          <button data-chip="100">100</button>
+          <span class="custom-chip-wrap">
+            <button id="customChipBtn" data-chip="custom">EDIT</button>
+            <button id="customMenuBtn" type="button" title="Set custom value">+</button>
+
+            <!-- Custom chip dropdown: hidden until you click the (+).
+                 Floats to the RIGHT of the chip (absolute), so it never
+                 pushes down the content below. $15-$10,000 in $5 steps. -->
+            <div class="custom-chip-panel hidden" id="customChipPanel">
+              <label for="customChipInput">Edit</label>
+              <input id="customChipInput" type="number" min="15" max="10000" step="5" value="15" />
+              <button id="setCustomChipBtn" type="button">Set</button>
+              <small>Range: $15 - $10,000</small>
+            </div>
+          </span>
+        </section>
+
+
+        <div class="history-container">
+  <!-- Bead Plate (left) -->
+  <div class="history-box">
+    <div id="beadPlate" class="road bead-plate"></div>
+  </div>
+
+  <!-- Big Road (right) -->
+  <div class="history-box">
+    <div id="bigRoad" class="road big-road"></div>
+  </div>
+</div>
+
+        <div id="winMessage" class="win-message hidden">YOU WIN!</div>
+
+        <footer><strong style="font-size:11px; color:#00008b;  font-style:italic;">
+  Free-to-play simulator for entertainment only. No real money gambling. Virtual coins have no monetary value. 
+  Players must be 18+.
+</strong></footer>
+
+      </section><!-- /betting-panel -->
+
+      <!-- ============ RIGHT 15%: GLOBAL CHAT ============
+           Fase 1: demo local (los mensajes se guardan en este navegador).
+           Fase 2: conectar el adaptador ChatNet (js/chat.js) al servidor
+           (WebSocket) sin tocar este HTML.
+           Roles: admin (tú) > mod > user. Los botones de moderación solo
+           se muestran si el rol actual es admin o mod (clase .mod-only). -->
+      <aside class="chat-panel" id="chatPanel">
+
+        <header class="chat-head">
+          <span class="chat-title">💬 Chat Global</span>
+          <span class="chat-online" title="Conectados">● <strong id="chatOnline">1</strong></span>
+          <span class="chat-head-btns">
+            <button id="chatSoundBtn"  type="button" title="Sonido de mensajes">🔔</button>
+            <button id="chatRulesBtn"  type="button" title="Reglas del chat">ℹ</button>
+            <button id="chatModBtn"    type="button" class="mod-only" title="Herramientas de moderación">🛡</button>
+          </span>
+        </header>
+
+        <!-- ANUNCIO OFICIAL — fijo en la parte superior. Solo el admin
+             lo publica (botón 📌 Anuncio o comando /anuncio texto). -->
+        <div id="chatPinned" class="chat-pinned hidden">
+          <div class="chat-pinned-tag">📌 ANUNCIO OFICIAL</div>
+          <div id="chatPinnedText" class="chat-pinned-text"></div>
+          <button id="chatPinnedClose" type="button" class="mod-only" title="Quitar anuncio">×</button>
+        </div>
+
+        <!-- Herramientas de moderación (se abren con el botón 🛡) -->
+        <div id="chatModTools" class="chat-mod-tools hidden">
+          <button id="modAnnounceBtn" type="button">📌 Anuncio</button>
+          <button id="modSlowBtn"     type="button">🐢 Slow</button>
+          <button id="modClearBtn"    type="button">🧹 Limpiar</button>
+        </div>
+
+        <!-- Lista de mensajes -->
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <!-- Píldora "nuevos mensajes" cuando el usuario subió el scroll -->
+        <button id="chatNewMsgs" class="chat-newmsgs hidden" type="button">▼ Nuevos mensajes</button>
+
+        <!-- Avisos del sistema (cooldown, slow mode, reglas...) -->
+        <div id="chatNotice" class="chat-notice hidden"></div>
+
+        <!-- Selector rápido de emojis -->
+        <div id="chatEmojiPanel" class="chat-emoji hidden"></div>
+
+        <!-- Caja de escritura -->
+        <footer class="chat-compose">
+          <button id="chatEmojiBtn" type="button" title="Emojis">😊</button>
+          <input id="chatInput" type="text" maxlength="200" autocomplete="off"
+                 placeholder="Escribe un mensaje… (/ayuda)" />
+          <button id="chatSendBtn" type="button" title="Enviar">➤</button>
+        </footer>
+        <div class="chat-meta">
+          <span id="chatCharCount">0/200</span>
+          <span id="chatSlowTag" class="hidden">🐢 slow <strong id="chatSlowSecs">10</strong>s</span>
+        </div>
+
+      </aside><!-- /chat-panel -->
+
+    </section><!-- /main-panel -->
+  </main>
+
+
+  <!-- ================================================================
+       ENGINE REPORT MODAL — the report is generated and shown ON SCREEN.
+       "Copy report" sends it to the clipboard; ".txt" download is an
+       optional extra, never forced. Opens from the menu button or from
+       the Developer panel (Ctrl + Shift + D).
+       ================================================================ -->
+  <div id="reportOverlay" class="report-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="report-panel">
+      <div class="report-head">
+        <h2 id="reportTitle">Bacca Elite Complete Report</h2>
+        <button id="reportCloseBtn" type="button" aria-label="Close report">&times;</button>
+      </div>
+      <pre id="reportBody">Generating report...</pre>
+      <div class="report-foot">
+        <button id="reportDownloadBtn" type="button">Download .txt</button>
+        <button id="reportCopyBtn" type="button">Copy report</button>
+      </div>
+    </div>
+  </div>
+
+  <section id="devPanel" class="dev-panel hidden" aria-hidden="true">
+    <div class="dev-head">
+      <strong>Developer Mode</strong>
+      <span>Internal testing only</span>
+      <button id="devCloseBtn" type="button">×</button>
+    </div>
+    <div class="dev-actions">
+      <button data-sim="100000" type="button">Generate 100,000-hand report</button>
+    </div>
+    <pre id="devOutput">Ctrl + Shift + D opens/closes this panel.</pre>
+  </section>
+
+  <!-- ORDER MATTERS:
+       1) auth.js  — session guard (redirects to login.html if not signed in)
+       2) menu.js  — builds the shared menu, so app.js can find #reportMenuBtn
+       3) app.js / chat.js -->
+  <script src="js/auth.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

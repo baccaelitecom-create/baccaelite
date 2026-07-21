@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BaccaElite.com: Statistics</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Estilos SOLO de statistics (performance first: CSS puro, sin
+       librerías, animación mínima de hover). -->
+  <style>
+    .st-grid{
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      max-width:820px;
+      margin-top:10px;
+    }
+    .st-card{
+      flex:1 1 240px;
+      padding:14px 16px;
+      border-radius:12px;
+      background:#ffffe0;
+      border:2px solid #00008b;
+      transition:transform .12s;
+    }
+    .st-card:hover{ transform:translateY(-2px); }
+    .st-card .st-label{
+      font-size:12px;
+      font-weight:700;
+      letter-spacing:.4px;
+      text-transform:uppercase;
+      color:#00223a;
+    }
+    .st-card .st-value{
+      margin-top:2px;
+      font-size:26px;
+      font-weight:900;
+      color:#00008b;
+    }
+    .st-card .st-sub{
+      font-size:12px;
+      color:#00223a;
+    }
+    .st-levels{
+      max-width:520px;
+      margin-top:18px;
+      border-collapse:collapse;
+      font-size:13px;
+      width:100%;
+    }
+    .st-levels th,.st-levels td{
+      border:1px solid #00008b;
+      padding:5px 12px;
+      text-align:left;
+    }
+    .st-levels th{ background:#00008b; color:#fff; }
+    .st-levels tr:nth-child(even) td{ background:#eef4ff; }
+    .st-h2{
+      margin:24px 0 6px;
+      font-size:18px;
+      font-weight:900;
+      color:#00008b;
+      border-bottom:2px solid #00008b;
+      max-width:820px;
+      padding-bottom:3px;
+    }
+    .st-note{
+      max-width:820px;
+      font-size:12px;
+      font-style:italic;
+      color:#00223a;
+      margin-top:16px;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="main-panel">
+
+      <!-- ============ LEFT 15%: MENU AREA ============ -->
+      <aside class="menu-panel" id="sharedMenu"></aside>
+
+      <!-- ============ CENTER 70%: CONTENIDO DE LA SECCIÓN ============ -->
+      <section class="betting-panel">
+
+        <h1 class="page-title">Statistics</h1>
+
+        <!-- Site-wide numbers. DEMO values for now; every figure has an
+             id so the FASE-2 server can update it live without touching
+             this HTML. This page is also shown to potential banner
+             advertisers — figures here should always be real. -->
+
+        <div class="st-grid">
+          <div class="st-card">
+            <div class="st-label">Online since</div>
+            <div class="st-value" id="stSince">March 1, 2026</div>
+            <div class="st-sub">BaccaElite.com official launch</div>
+          </div>
+          <div class="st-card">
+            <div class="st-label">Registered users</div>
+            <div class="st-value" id="stUsers">2,500</div>
+            <div class="st-sub">Free accounts, worldwide</div>
+          </div>
+          <div class="st-card">
+            <div class="st-label">Record users online</div>
+            <div class="st-value" id="stPeak">122</div>
+            <div class="st-sub" id="stPeakWhen">July 4, 2026 — 9:42 PM (AST)</div>
+          </div>
+          <div class="st-card">
+            <div class="st-label">Users in tournaments</div>
+            <div class="st-value" id="stTourney">260</div>
+            <div class="st-sub">All-time tournament participants</div>
+          </div>
+          <div class="st-card">
+            <div class="st-label">Public tables</div>
+            <div class="st-value">10</div>
+            <div class="st-sub">Up to 10 players each, always free</div>
+          </div>
+          <div class="st-card">
+            <div class="st-label">Hands dealt site-wide</div>
+            <div class="st-value" id="stHands">1,842,300</div>
+            <div class="st-sub">Private + public + tournament tables</div>
+          </div>
+        </div>
+
+        <h2 class="st-h2">Members by Level</h2>
+        <table class="st-levels">
+          <tr><th>Level</th><th>Members</th></tr>
+          <tr><td>1. Bronze</td>  <td id="stLvl1">2,349</td></tr>
+          <tr><td>2. Silver</td>  <td id="stLvl2">80</td></tr>
+          <tr><td>3. Gold</td>    <td id="stLvl3">40</td></tr>
+          <tr><td>4. Platinum</td><td id="stLvl4">20</td></tr>
+          <tr><td>5. Diamond</td> <td id="stLvl5">8</td></tr>
+          <tr><td>6. Elite</td>   <td id="stLvl6">2</td></tr>
+          <tr><td>7. Stellar</td> <td id="stLvl7">1</td></tr>
+          <tr><td>8. Legend</td>  <td id="stLvl8">0</td></tr>
+        </table>
+
+        <h2 class="st-h2">Fair Play</h2>
+        <p class="st-note" style="font-style:normal;">
+          Every hand on BaccaElite.com is dealt with cryptographically
+          secure random number generation (CSPRNG — Web Crypto API), and
+          anyone can verify the engine at any time with the free
+          100,000-hand Engine Report available in the menu. Free-to-play
+          only: virtual coins with no monetary value. Players must be 18+.
+        </p>
+
+        <p class="st-note">
+          Statistics are updated periodically. Figures on this page are
+          site-wide totals since launch unless noted otherwise.
+        </p>
+
+      </section><!-- /betting-panel -->
+
+      <!-- ============ RIGHT 15%: GLOBAL CHAT ============ -->
+      <aside class="chat-panel" id="chatPanel">
+
+        <header class="chat-head">
+          <span class="chat-title">💬 Chat Global</span>
+          <span class="chat-online" title="Conectados">● <strong id="chatOnline">1</strong></span>
+          <span class="chat-head-btns">
+            <button id="chatSoundBtn"  type="button" title="Sonido de mensajes">🔔</button>
+            <button id="chatRulesBtn"  type="button" title="Reglas del chat">ℹ</button>
+            <button id="chatModBtn"    type="button" class="mod-only" title="Herramientas de moderación">🛡</button>
+          </span>
+        </header>
+
+        <div id="chatPinned" class="chat-pinned hidden">
+          <div class="chat-pinned-tag">📌 ANUNCIO OFICIAL</div>
+          <div id="chatPinnedText" class="chat-pinned-text"></div>
+          <button id="chatPinnedClose" type="button" class="mod-only" title="Quitar anuncio">×</button>
+        </div>
+
+        <div id="chatModTools" class="chat-mod-tools hidden">
+          <button id="modAnnounceBtn" type="button">📌 Anuncio</button>
+          <button id="modSlowBtn"     type="button">🐢 Slow</button>
+          <button id="modClearBtn"    type="button">🧹 Limpiar</button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <button id="chatNewMsgs" class="chat-newmsgs hidden" type="button">▼ Nuevos mensajes</button>
+
+        <div id="chatNotice" class="chat-notice hidden"></div>
+
+        <div id="chatEmojiPanel" class="chat-emoji hidden"></div>
+
+        <footer class="chat-compose">
+          <button id="chatEmojiBtn" type="button" title="Emojis">😊</button>
+          <input id="chatInput" type="text" maxlength="200" autocomplete="off"
+                 placeholder="Escribe un mensaje… (/ayuda)" />
+          <button id="chatSendBtn" type="button" title="Enviar">➤</button>
+        </footer>
+        <div class="chat-meta">
+          <span id="chatCharCount">0/200</span>
+          <span id="chatSlowTag" class="hidden">🐢 slow <strong id="chatSlowSecs">10</strong>s</span>
+        </div>
+
+      </aside><!-- /chat-panel -->
+
+    </section><!-- /main-panel -->
+  </main>
+
+  <!-- SESSION GUARD (fase 2.1): auth.js debe cargar ANTES de menu.js.
+       Redirige a login.html si no hay sesion y llena el bloque de usuario. -->
+  <script src="js/auth.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

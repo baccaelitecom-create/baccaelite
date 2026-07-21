@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bacca-Auto: Public Tables</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Estilos SOLO del lobby de mesas públicas. Si prefieres, este bloque
+       puede moverse a css/style.css como sección 12f. Colores y tipografía
+       heredan del sitio (misma paleta que index y rules). -->
+  <style>
+    .tables-grid{
+      display:flex;
+      flex-wrap:wrap;
+      gap:16px;
+      margin-top:14px;
+      max-width:900px;
+    }
+    .table-card{
+      flex:1 1 240px;
+      max-width:270px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:8px;
+      padding:16px 14px;
+      border-radius:12px;
+      background:#ffffe0;
+      border:2px solid #00008b;
+      box-shadow:0 4px 10px rgba(0,0,50,.18);
+    }
+    .table-card .flag{ font-size:34px; line-height:1; }
+    .table-card h3{
+      margin:0;
+      font-size:18px;
+      font-weight:900;
+      color:#00008b;
+      letter-spacing:.5px;
+    }
+    .table-card .players{
+      font-size:14px;
+      font-weight:700;
+      color:#00223a;
+    }
+    .table-card .players strong{ color:#008000; }
+    .table-card.full .players strong{ color:#ff0000; }
+    .table-card .status{
+      font-size:11px;
+      font-weight:700;
+      padding:2px 10px;
+      border-radius:999px;
+      color:#fff;
+      background:#008000;   /* active */
+    }
+    .table-card.sleeping .status{ background:#777; } /* empty = server asleep */
+    .table-card .enter-btn{
+      margin-top:4px;
+      width:100%;
+      padding:9px 0;
+      border:none;
+      border-radius:8px;
+      font-size:14px;
+      font-weight:900;
+      letter-spacing:1px;
+      color:#fff;
+      cursor:pointer;
+      background:#00008b;
+      transition:background .15s, transform .1s;
+    }
+    .table-card .enter-btn:hover{ background:#008000; transform:translateY(-1px); }
+    .table-card.full .enter-btn{
+      background:#999;
+      cursor:not-allowed;
+    }
+    .lobby-note{
+      margin-top:16px;
+      max-width:820px;
+      font-size:12px;
+      color:#00223a;
+      font-style:italic;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="main-panel">
+
+      <!-- ============ LEFT 15%: MENU AREA ============
+           SHARED MENU: this <aside> stays EMPTY. js/menu.js fills it on
+           every page (links + user block + Engine Report button). To edit
+           the menu, edit MENU_ITEMS in js/menu.js — ONE place, whole site. -->
+      <aside class="menu-panel" id="sharedMenu"></aside>
+
+      <!-- ============ CENTER 70%: CONTENIDO DE LA SECCIÓN ============ -->
+      <section class="betting-panel">
+
+        <h1 class="page-title">Public Tables</h1>
+
+        <!-- Las 10 cajas se generan desde la lista TABLES del script de
+             abajo (mismo patrón que el menú compartido): para añadir,
+             quitar o renombrar una mesa se edita SOLO esa lista.
+             FASE 1: los contadores de jugadores son de demostración (0/10).
+             FASE 2: el servidor actualizará players/estado en vivo por el
+             mismo canal del chat (js/chat.js), sin tocar este HTML.
+             Regla de servidor: una mesa sin jugadores se "duerme" (no
+             consume recursos); entra el primer jugador y se activa. -->
+        <div class="tables-grid" id="tablesGrid"></div>
+
+        <p class="lobby-note">
+          Each public table seats up to 10 players and uses the exact same
+          game engine and rules as your Private Table. Empty tables sleep
+          to save server resources — they wake up the moment the first
+          player enters.
+        </p>
+
+      </section><!-- /betting-panel -->
+
+      <!-- ============ RIGHT 15%: GLOBAL CHAT ============
+           Idéntico al del index. No editar aquí: cualquier mejora del
+           chat se hace una vez en js/chat.js y aplica a todas las páginas. -->
+      <aside class="chat-panel" id="chatPanel">
+
+        <header class="chat-head">
+          <span class="chat-title">💬 Chat Global</span>
+          <span class="chat-online" title="Conectados">● <strong id="chatOnline">1</strong></span>
+          <span class="chat-head-btns">
+            <button id="chatSoundBtn"  type="button" title="Sonido de mensajes">🔔</button>
+            <button id="chatRulesBtn"  type="button" title="Reglas del chat">ℹ</button>
+            <button id="chatModBtn"    type="button" class="mod-only" title="Herramientas de moderación">🛡</button>
+          </span>
+        </header>
+
+        <div id="chatPinned" class="chat-pinned hidden">
+          <div class="chat-pinned-tag">📌 ANUNCIO OFICIAL</div>
+          <div id="chatPinnedText" class="chat-pinned-text"></div>
+          <button id="chatPinnedClose" type="button" class="mod-only" title="Quitar anuncio">×</button>
+        </div>
+
+        <div id="chatModTools" class="chat-mod-tools hidden">
+          <button id="modAnnounceBtn" type="button">📌 Anuncio</button>
+          <button id="modSlowBtn"     type="button">🐢 Slow</button>
+          <button id="modClearBtn"    type="button">🧹 Limpiar</button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <button id="chatNewMsgs" class="chat-newmsgs hidden" type="button">▼ Nuevos mensajes</button>
+
+        <div id="chatNotice" class="chat-notice hidden"></div>
+
+        <div id="chatEmojiPanel" class="chat-emoji hidden"></div>
+
+        <footer class="chat-compose">
+          <button id="chatEmojiBtn" type="button" title="Emojis">😊</button>
+          <input id="chatInput" type="text" maxlength="200" autocomplete="off"
+                 placeholder="Escribe un mensaje… (/ayuda)" />
+          <button id="chatSendBtn" type="button" title="Enviar">➤</button>
+        </footer>
+        <div class="chat-meta">
+          <span id="chatCharCount">0/200</span>
+          <span id="chatSlowTag" class="hidden">🐢 slow <strong id="chatSlowSecs">10</strong>s</span>
+        </div>
+
+      </aside><!-- /chat-panel -->
+
+    </section><!-- /main-panel -->
+  </main>
+
+  <!-- SESSION GUARD (fase 2.1): auth.js debe cargar ANTES de menu.js.
+       Redirige a login.html si no hay sesion y llena el bloque de usuario. -->
+  <script src="js/auth.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/chat.js"></script>
+
+  <script>
+  /* ===================================================================
+     PUBLIC TABLES LOBBY
+     One list drives the 10 cards. Every card links to the SINGLE game
+     page game_table.html?table=<key> — one file serves all 10 tables.
+     =================================================================== */
+  (function initLobby(){
+    const TABLES=[
+      {key:'australia',    name:'Australia',    flag:'🇦🇺'},
+      {key:'brazil',       name:'Brazil',       flag:'🇧🇷'},
+      {key:'canada',       name:'Canada',       flag:'🇨🇦'},
+      {key:'china',        name:'China',        flag:'🇨🇳'},
+      {key:'mexico',       name:'Mexico',       flag:'🇲🇽'},
+      {key:'puerto-rico',  name:'Puerto Rico',  flag:'🇵🇷'},
+      {key:'qatar',        name:'Qatar',        flag:'🇶🇦'},
+      {key:'salvador',     name:'Salvador',     flag:'🇸🇻'},
+      {key:'south-africa', name:'South Africa', flag:'🇿🇦'},
+      {key:'spain',        name:'Spain',        flag:'🇪🇸'}
+    ];
+    const MAX_PLAYERS=10;
+
+    const grid=document.getElementById('tablesGrid');
+    if(!grid)return;
+
+    grid.innerHTML=TABLES.map(t=>{
+      /* Las tarjetas nacen en 0 y el servidor las llena EN VIVO abajo. */
+      return `
+        <div class="table-card sleeping" data-table="${t.key}">
+          <div class="flag">${t.flag}</div>
+          <h3>${t.name}</h3>
+          <div class="players">Players: <strong data-count>0/${MAX_PLAYERS}</strong></div>
+          <span class="status" data-status>Sleeping</span>
+          <button class="enter-btn" type="button"
+                  onclick="location.href='game_table.html?table=${t.key}'">
+            ENTER
+          </button>
+        </div>`;
+    }).join('');
+
+    /* =================================================================
+       LOBBY EN VIVO (fase 2.4): cada 4s se consulta GET /api/tables y
+       se actualizan contadores y estados reales de las 10 mesas:
+       Sleeping (0) · Active (verde) · Full (rojo, ENTER bloqueado).
+       En modo local (sin servidor) las tarjetas quedan en demo (0).
+       ================================================================= */
+    async function updateLive(){
+      try{
+        const r=await fetch('/api/tables');
+        if(!r.ok)return;
+        const data=await r.json();
+        for(const info of (data.tables||[])){
+          const card=grid.querySelector(`.table-card[data-table="${info.key}"]`);
+          if(!card)continue;
+          card.querySelector('[data-count]').textContent=info.players+'/'+info.max;
+          const st=card.querySelector('[data-status]');
+          st.textContent=info.status==='sleeping'?'Sleeping'
+                        :info.status==='full'?'Full':'Active';
+          card.classList.toggle('sleeping',info.status==='sleeping');
+          card.classList.toggle('full',info.status==='full');
+          card.querySelector('.enter-btn').disabled=info.status==='full';
+        }
+      }catch(e){/* sin servidor: modo demo, sin ruido */}
+    }
+    if(location.protocol!=='file:'){
+      updateLive();
+      setInterval(updateLive,4000);
+    }
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BaccaElite.com: Tournament</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Estilos SOLO de tournament (performance first: CSS puro, hover
+       simple, cero librerías). -->
+  <style>
+    .tn-h2{
+      margin:22px 0 8px;
+      font-size:18px;
+      font-weight:900;
+      color:#00008b;
+      border-bottom:2px solid #00008b;
+      max-width:840px;
+      padding-bottom:3px;
+    }
+    /* ---------- The 4 daily tables ---------- */
+    .tn-grid{
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      max-width:840px;
+      margin-top:10px;
+    }
+    .tn-card{
+      flex:1 1 190px;
+      max-width:210px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:7px;
+      padding:14px 12px;
+      border-radius:12px;
+      background:#ffffe0;
+      border:2px solid #00008b;
+      transition:transform .12s, box-shadow .12s;
+    }
+    .tn-card:hover{ transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,50,.2); }
+    .tn-card h3{ margin:0; font-size:17px; font-weight:900; color:#00008b; }
+    .tn-time{ font-size:13px; font-weight:800; color:#00223a; }
+    .tn-seats{ font-size:13px; font-weight:700; color:#00223a; }
+    .tn-seats strong{ color:#008000; }
+    .tn-card.full .tn-seats strong{ color:#ff0000; }
+    .tn-status{
+      font-size:11px;
+      font-weight:800;
+      padding:2px 12px;
+      border-radius:999px;
+      color:#fff;
+      background:#008000;      /* open */
+    }
+    .tn-card.full   .tn-status{ background:#ff0000; }
+    .tn-card.closed .tn-status{ background:#777; }
+    .tn-card.soon   .tn-status{ background:#00008b; }
+    .tn-join{
+      margin-top:4px;
+      width:100%;
+      padding:8px 0;
+      border:none;
+      border-radius:8px;
+      font-size:13px;
+      font-weight:900;
+      letter-spacing:.6px;
+      color:#fff;
+      background:#00008b;
+      cursor:pointer;
+      transition:background .15s, transform .1s;
+    }
+    .tn-join:hover:not(:disabled){ background:#008000; transform:translateY(-1px); }
+    .tn-join:disabled{ background:#999; cursor:not-allowed; }
+    .tn-prize{
+      max-width:840px;
+      margin-top:8px;
+      font-size:13px;
+      font-weight:700;
+      color:#00223a;
+    }
+    /* ---------- Winners (last 7 days = 28 names) ---------- */
+    .tn-winners{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      max-width:840px;
+      margin-top:8px;
+    }
+    .tn-winner{
+      flex:1 1 190px;
+      max-width:200px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:8px;
+      font-size:12px;
+      background:#eef4ff;
+      border:1px solid #00008b;
+    }
+    .tn-winner .w-name{ font-weight:800; color:#00008b; }
+    .tn-winner .w-xp{ font-weight:700; color:#008000; white-space:nowrap; }
+    .tn-winner .w-date{ color:#00223a; white-space:nowrap; }
+    /* ---------- Rules ---------- */
+    .tn-rules{
+      max-width:840px;
+      margin:8px 0 0 0;
+      padding-left:22px;
+      font-size:13px;
+      line-height:1.6;
+      color:#00223a;
+    }
+    .tn-rules li{ margin:6px 0; }
+    .tn-note{
+      max-width:840px;
+      margin-top:12px;
+      font-size:12px;
+      font-style:italic;
+      color:#00223a;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="main-panel">
+
+      <!-- ============ LEFT 15%: MENU AREA ============ -->
+      <aside class="menu-panel" id="sharedMenu"></aside>
+
+      <!-- ============ CENTER 70%: CONTENIDO DE LA SECCIÓN ============ -->
+      <section class="betting-panel">
+
+        <h1 class="page-title">Tournament</h1>
+
+        <!-- ORDER (by design): tables first — daily players come to grab
+             a seat, so the action is on top; winners next (motivation);
+             full rules at the bottom (read once, referenced rarely). -->
+
+        <h2 class="tn-h2">Today's Tables</h2>
+        <p class="tn-prize">
+          4 tables every day, one every 6 hours — 6 seats each. Entry is
+          free: BaccaElite.com provides $5,000 in virtual tokens per
+          player. Your prize is every XP you win. One tournament per
+          player per day.
+        </p>
+
+        <!-- The 4 cards are generated from TODAY_TABLES in the script
+             below (demo states). FASE 2: the server drives seats and
+             status live; this HTML does not change. -->
+        <div class="tn-grid" id="tnGrid"></div>
+
+        <h2 class="tn-h2">Winners — Last 7 Days</h2>
+        <!-- 4 winners/day × 7 days = 28 names, published for 7 days.
+             Generated from WINNERS in the script below (demo data). -->
+        <div class="tn-winners" id="tnWinners"></div>
+
+        <h2 class="tn-h2">Official Tournament Rules</h2>
+        <ol class="tn-rules">
+          <li><strong>Your prize is your XP.</strong> Every XP you earn at
+          a tournament table is yours to keep — that is the challenge and
+          the reward.</li>
+          <li><strong>The bankroll is on us.</strong> Each participant
+          receives $5,000 in virtual tokens provided by BaccaElite.com,
+          valid only at the tournament table. The tokens are not a prize
+          and are not added to your balance.</li>
+          <li><strong>Four tables per day, every 6 hours.</strong> Tables
+          open at 12:00 AM, 6:00 AM, 12:00 PM and 6:00 PM (site time), so
+          players in every time zone get their chance. Only these 4
+          tables run per 24 hours.</li>
+          <li><strong>Six seats per table.</strong> When a table fills
+          up, entry closes for that table.</li>
+          <li><strong>One tournament per player per day.</strong> You may
+          join only one of the four daily tables — everyone gets a fair
+          shot at the prizes.</li>
+          <li><strong>The winner is the player with the most XP</strong>
+          at their table. If two players finish tied, the one who reached
+          that XP total first wins.</li>
+          <li><strong>Winners are published.</strong> Each table's winner
+          appears above with their name, XP won and date, and stays
+          published on this page for 7 days.</li>
+          <li><strong>Practice your strategy.</strong> Tournaments are
+          the perfect chance to test your method and maximize XP gains
+          without touching your own balance — take advantage of it.</li>
+        </ol>
+
+        <p class="tn-note">
+          Tournament seats, live status and automatic winner publishing
+          connect to the server in phase 2. Times shown are site time.
+        </p>
+
+      </section><!-- /betting-panel -->
+
+      <!-- ============ RIGHT 15%: GLOBAL CHAT ============ -->
+      <aside class="chat-panel" id="chatPanel">
+
+        <header class="chat-head">
+          <span class="chat-title">💬 Chat Global</span>
+          <span class="chat-online" title="Conectados">● <strong id="chatOnline">1</strong></span>
+          <span class="chat-head-btns">
+            <button id="chatSoundBtn"  type="button" title="Sonido de mensajes">🔔</button>
+            <button id="chatRulesBtn"  type="button" title="Reglas del chat">ℹ</button>
+            <button id="chatModBtn"    type="button" class="mod-only" title="Herramientas de moderación">🛡</button>
+          </span>
+        </header>
+
+        <div id="chatPinned" class="chat-pinned hidden">
+          <div class="chat-pinned-tag">📌 ANUNCIO OFICIAL</div>
+          <div id="chatPinnedText" class="chat-pinned-text"></div>
+          <button id="chatPinnedClose" type="button" class="mod-only" title="Quitar anuncio">×</button>
+        </div>
+
+        <div id="chatModTools" class="chat-mod-tools hidden">
+          <button id="modAnnounceBtn" type="button">📌 Anuncio</button>
+          <button id="modSlowBtn"     type="button">🐢 Slow</button>
+          <button id="modClearBtn"    type="button">🧹 Limpiar</button>
+        </div>
+
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+        <button id="chatNewMsgs" class="chat-newmsgs hidden" type="button">▼ Nuevos mensajes</button>
+
+        <div id="chatNotice" class="chat-notice hidden"></div>
+
+        <div id="chatEmojiPanel" class="chat-emoji hidden"></div>
+
+        <footer class="chat-compose">
+          <button id="chatEmojiBtn" type="button" title="Emojis">😊</button>
+          <input id="chatInput" type="text" maxlength="200" autocomplete="off"
+                 placeholder="Escribe un mensaje… (/ayuda)" />
+          <button id="chatSendBtn" type="button" title="Enviar">➤</button>
+        </footer>
+        <div class="chat-meta">
+          <span id="chatCharCount">0/200</span>
+          <span id="chatSlowTag" class="hidden">🐢 slow <strong id="chatSlowSecs">10</strong>s</span>
+        </div>
+
+      </aside><!-- /chat-panel -->
+
+    </section><!-- /main-panel -->
+  </main>
+
+  <!-- SESSION GUARD (fase 2.1): auth.js debe cargar ANTES de menu.js.
+       Redirige a login.html si no hay sesion y llena el bloque de usuario. -->
+  <script src="js/auth.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/chat.js"></script>
+
+  <script>
+  /* ===================================================================
+     TOURNAMENT — demo data drives the 4 daily tables and the 28-name
+     winners list. FASE 2: the server replaces both arrays with live
+     data through the same channel as the chat.
+     Table states: 'open' (joinable), 'full', 'closed' (finished),
+     'soon' (opens later today).
+     =================================================================== */
+  (function initTournament(){
+    const MAX=6;
+    const grid=document.getElementById('tnGrid');
+    const wEl=document.getElementById('tnWinners');
+
+    /* =================================================================
+       FASE 2.5 -- LOBBY EN VIVO: las 4 mesas y los ganadores salen del
+       servidor de verdad (GET /api/tournaments y /api/tournament-winners).
+       JOIN entra a game_table.html?tournament=N, donde js/app.js
+       (RemoteTable) conecta con la mesa real por WebSocket.
+       En MODO LOCAL (sin servidor) se conserva la demo de la Fase 1
+       tal cual, para que la pagina nunca se vea rota sin backend.
+       ================================================================= */
+    async function refreshTables(){
+      try{
+        const r=await fetch('/api/tournaments');
+        if(!r.ok||!grid)return;
+        const data=await r.json();
+        grid.innerHTML=data.tables.map(t=>{
+          const label={open:'OPEN',full:'FULL',closed:'FINISHED',soon:'OPENS '+t.time}[t.state];
+          const joined=data.joinedSlot===t.n;
+          const blocked=data.joinedSlot!=null&&data.joinedSlot!==t.n;
+          let btn;
+          if(t.state==='soon') btn='<button class="tn-join" type="button" disabled>NOT YET</button>';
+          else if(t.state==='closed') btn='<button class="tn-join" type="button" disabled>FINISHED</button>';
+          else if(blocked) btn='<button class="tn-join" type="button" disabled title="You already joined Table #'+data.joinedSlot+' today">JOINED #'+data.joinedSlot+'</button>';
+          else if(t.state==='full'&&!joined) btn='<button class="tn-join" type="button" disabled>FULL</button>';
+          else btn='<button class="tn-join" type="button" onclick="location.href=\'game_table.html?tournament='+t.n+'\'">'+(joined?'REJOIN':'JOIN')+'</button>';
+          const cls=t.state+(joined?' joined':'');
+          return `
+            <div class="tn-card ${cls}">
+              <h3>Table #${t.n}</h3>
+              <span class="tn-time">${t.time}</span>
+              <span class="tn-seats">Seats: <strong>${t.seats}/${t.max}</strong></span>
+              <span class="tn-status">${label}</span>
+              ${btn}
+            </div>`;
+        }).join('');
+      }catch(e){/* sin servidor: se conserva la demo, ver mas abajo */}
+    }
+    async function refreshWinners(){
+      try{
+        const r=await fetch('/api/tournament-winners');
+        if(!r.ok||!wEl)return;
+        const data=await r.json();
+        if(!data.winners.length){
+          wEl.innerHTML='<p style="font-size:12px;color:#00223a;font-style:italic;">No tournaments finished yet -- be the first champion!</p>';
+          return;
+        }
+        wEl.innerHTML=data.winners.map(w=>{
+          const dateStr=new Date(w.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+          return `
+            <div class="tn-winner" title="Table #${w.slot}">
+              <span class="w-name">${w.name}</span>
+              <span class="w-xp">+${w.xp.toLocaleString('en-US')} XP</span>
+              <span class="w-date">${dateStr}</span>
+            </div>`;
+        }).join('');
+      }catch(e){}
+    }
+
+    if(location.protocol!=='file:'){
+      refreshTables();setInterval(refreshTables,5000);
+      refreshWinners();setInterval(refreshWinners,60000);
+      return;
+    }
+
+    /* ----- MODO LOCAL (sin servidor): demo original de la Fase 1 ----- */
+    const TODAY_TABLES=[
+      {n:1,time:'12:00 AM',seats:6,state:'closed'},
+      {n:2,time:'6:00 AM', seats:6,state:'closed'},
+      {n:3,time:'12:00 PM',seats:4,state:'open'},
+      {n:4,time:'6:00 PM', seats:0,state:'soon'}
+    ];
+    if(grid){
+      grid.innerHTML=TODAY_TABLES.map(t=>{
+        const full=t.seats>=MAX&&t.state==='open';
+        const state=full?'full':t.state;
+        const label={open:'OPEN',full:'FULL',closed:'FINISHED',soon:'OPENS '+t.time}[state];
+        const btn={
+          open:'<button class="tn-join" type="button" onclick="alert(\'Tournament seats connect to the server in phase 2.\')">JOIN</button>',
+          full:'<button class="tn-join" type="button" disabled>FULL</button>',
+          closed:'<button class="tn-join" type="button" disabled>FINISHED</button>',
+          soon:'<button class="tn-join" type="button" disabled>NOT YET</button>'
+        }[state];
+        return `
+          <div class="tn-card ${state}">
+            <h3>Table #${t.n}</h3>
+            <span class="tn-time">${t.time}</span>
+            <span class="tn-seats">Seats: <strong>${t.seats}/${MAX}</strong></span>
+            <span class="tn-status">${label}</span>
+            ${btn}
+          </div>`;
+      }).join('');
+    }
+    const NAMES=['BaccQueen','DragonTiger','LuckySeven','ShoeReader',
+      'MartinGale','FibonacciFan','ParoliPro','TieHunter','NaturalNine',
+      'Jasor','GoldenShoe','RedDragon','AceOfPR','QatarKing','RioBac',
+      'SpainFlush','MapleBet','SydneyWin','PandaLuck','AztecaNine'];
+    const WINNERS=[];
+    const today=new Date();
+    for(let d=0;d<7;d++){
+      const day=new Date(today);day.setDate(today.getDate()-d);
+      const dateStr=day.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      for(let t=1;t<=4;t++){
+        const i=(d*4+t)%NAMES.length;
+        const xpWon=3200+((d*4+t)*137)%4800;
+        WINNERS.push({name:NAMES[i],xp:xpWon,date:dateStr,table:t});
+      }
+    }
+    if(wEl){
+      wEl.innerHTML=WINNERS.map(w=>`
+        <div class="tn-winner" title="Table #${w.table}">
+          <span class="w-name">${w.name}</span>
+          <span class="w-xp">+${w.xp.toLocaleString('en-US')} XP</span>
+          <span class="w-date">${w.date}</span>
+        </div>`).join('');
+    }
+  })();
+  </script>
+</body>
+</html>
