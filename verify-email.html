@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificar Email - BaccaElite</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #001a4d 0%, #003380 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            max-width: 500px;
+            text-align: center;
+        }
+        .container h2 {
+            color: #001a4d;
+            margin-bottom: 20px;
+        }
+        .container p {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .button {
+            background: #001a4d;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        .button:hover {
+            background: #003380;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🎰 BaccaElite</h2>
+        <p>Verificando tu email...</p>
+        
+        <div id="status" class="status loading">
+            Procesando verificación...
+        </div>
+        
+        <p id="message" style="display:none;"></p>
+        
+        <button class="button" onclick="window.location.href='/'">
+            Volver al Login
+        </button>
+    </div>
+
+    <script>
+        async function verifyEmail() {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+
+            if (!token) {
+                document.getElementById('status').innerHTML = '❌ Token inválido';
+                document.getElementById('status').className = 'status error';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/verify-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    document.getElementById('status').innerHTML = '✅ Email verificado correctamente!';
+                    document.getElementById('status').className = 'status success';
+                    document.getElementById('message').innerHTML = 'Puedes ahora iniciar sesión con tu cuenta.';
+                    document.getElementById('message').style.display = 'block';
+                } else {
+                    document.getElementById('status').innerHTML = '❌ ' + (data.error || 'Error verificando email');
+                    document.getElementById('status').className = 'status error';
+                }
+            } catch (err) {
+                document.getElementById('status').innerHTML = '❌ Error: ' + err.message;
+                document.getElementById('status').className = 'status error';
+            }
+        }
+
+        verifyEmail();
+    </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "bacc-auto",
+  "version": "1.0.0",
+  "description": "Baccarat simulator multiplayer - Fase 3",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ws": "^8.21.1",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {}
+}

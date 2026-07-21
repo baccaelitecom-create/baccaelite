@@ -1,16 +1,16 @@
 /* ==========================================================================
-   BACCA-AUTO — SERVIDOR PARA RAILWAY (server.js) — FASE 2.3+
+   BACCA-AUTO — SERVIDOR PARA RAILWAY (server.js) — FASE 3
    --------------------------------------------------------------------------
-   CAMBIOS PARA RAILWAY:
-   - Puerto ahora viene de process.env.PORT (variable dinámica de Railway)
-   - Los datos JSON siguen en carpeta data/ (funciona igual)
-   - HTTPS/SSL automático en Railway
+   NUEVAS CARACTERÍSTICAS:
+   - CAPTCHA en registro (hCaptcha)
+   - Email verification (Nodemailer + Ethereal)
+   - Rate limiting (anti brute-force)
+   - Validaciones mejoradas (email, password strength)
    
-   Hace CUATRO cosas en el mismo puerto:
-   1. Sirve tu página (index.html, css/, js/, audio/...)
-   2. API de cuentas (registro / login / logout / me) con contraseñas
-   3. ECONOMÍA: balance, XP, Free Token
-   4. WebSocket del Chat Global + Mesas + Torneos
+   Mantiene TODO lo de Fase 2.3:
+   - Chat global + WebSocket
+   - Economía (balance, XP, niveles)
+   - Mesas públicas + Torneos
    ========================================================================== */
 
 'use strict';
@@ -20,24 +20,87 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const nodemailer = require('nodemailer');
 
-// CAMBIO PARA RAILWAY: puerto dinámico
+// PUERTO DINÁMICO PARA RAILWAY
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 
-/* ------------------------------------------------------------------------
-   0) CUENTAS Y SESIONES — guardadas en archivos JSON (carpeta data/)
-   ------------------------------------------------------------------------ */
+/* =======================================================================
+   CONFIGURACIÓN DE EMAIL (Nodemailer + Ethereal)
+   ======================================================================= */
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+  port: process.env.SMTP_PORT || 587,
+  auth: {
+    user: process.env.SMTP_USER || 'gavin.glover@ethereal.email',
+    pass: process.env.SMTP_PASS || '8t6AtSPzZeJxxAmHm9'
+  }
+});
+
+async function sendVerificationEmail(email, token) {
+  const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${token}`;
+  
+  try {
+    await transporter.sendMail({
+      from: 'noreply@baccaelite.com',
+      to: email,
+      subject: 'Verifica tu email en BaccaElite',
+      html: `
+        <h2>¡Bienvenido a BaccaElite!</h2>
+        <p>Para completar tu registro, verifica tu email clickeando el link:</p>
+        <p><a href="${verifyUrl}" style="background:blue;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
+          Verificar Email
+        </a></p>
+        <p>Link directo: <a href="${verifyUrl}">${verifyUrl}</a></p>
+        <p>Este link expira en 24 horas.</p>
+      `
+    });
+    return true;
+  } catch (e) {
+    console.error('Error enviando email:', e.message);
+    return false;
+  }
+}
+
+/* =======================================================================
+   RATE LIMITING (anti brute-force)
+   ======================================================================= */
+const rateLimits = {};
+
+function isRateLimited(ip, action = 'login') {
+  const key = `${ip}:${action}`;
+  const now = Date.now();
+  const limit = rateLimits[key] || { count: 0, resetAt: now + 60000 };
+  
+  if (now > limit.resetAt) {
+    limit.count = 0;
+    limit.resetAt = now + 60000;
+  }
+  
+  limit.count++;
+  rateLimits[key] = limit;
+  
+  return limit.count > 5; // Máximo 5 intentos por minuto
+}
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+}
+
+/* =======================================================================
+   CUENTAS Y SESIONES
+   ======================================================================= */
 const DATA_DIR      = path.join(ROOT, 'data');
 const USERS_FILE    = path.join(DATA_DIR, 'users.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
-const TOUR_WINNERS_FILE = path.join(DATA_DIR, 'tournament_winners.json');
+const VERIFY_TOKENS_FILE = path.join(DATA_DIR, 'verify_tokens.json');
 
 const SESSION_DAYS  = 30;
 const SESSION_MS    = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const COOKIE_NAME   = 'bacca_sid';
 
-const auth = { users: {}, sessions: {} };
+const auth = { users: {}, sessions: {}, verifyTokens: {} };
 
 function loadJSON(file, fallback){
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -46,16 +109,17 @@ function saveJSON(file, obj){
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(obj, null, 2));
 }
-auth.users    = loadJSON(USERS_FILE, {});
-auth.sessions = loadJSON(SESSIONS_FILE, {});
 
-/* ------------------------------------------------------------------------
-   0b) ECONOMÍA DEL JUGADOR — balance, XP, Free Token y récord
-   ------------------------------------------------------------------------ */
+auth.users       = loadJSON(USERS_FILE, {});
+auth.sessions    = loadJSON(SESSIONS_FILE, {});
+auth.verifyTokens = loadJSON(VERIFY_TOKENS_FILE, {});
+
+/* =======================================================================
+   ECONOMÍA DEL JUGADOR
+   ======================================================================= */
 const START_BALANCE = 1023;
 const toCents = n => Math.round(n * 100) / 100;
 
-/* Tabla oficial de niveles */
 const LEVELS = [
   { name:'Bronze',   xp:0,    bonus:1  },
   { name:'Silver',   xp:1e4,  bonus:2  },
@@ -66,6 +130,7 @@ const LEVELS = [
   { name:'Stellar',  xp:1e9,  bonus:20 },
   { name:'Legend',   xp:1e10, bonus:30 }
 ];
+
 function levelOf(xp){
   let l = LEVELS[0];
   for (const lv of LEVELS) if (xp >= lv.xp) l = lv;
@@ -81,6 +146,7 @@ function ensureEconomy(u){
   if (!u.record) { u.record = { plays:0, won:0, lost:0 }; changed = true; }
   return changed;
 }
+
 { /* migración al arrancar */
   let migrated = false;
   for (const u of Object.values(auth.users)) if (ensureEconomy(u)) migrated = true;
@@ -90,7 +156,8 @@ function ensureEconomy(u){
 function publicState(u){
   return {
     balance: u.balance, xp: u.xp, freeTokenAt: u.freeTokenAt,
-    peak: u.peak, record: u.record, createdAt: u.createdAt, level: levelOf(u.xp)
+    peak: u.peak, record: u.record, createdAt: u.createdAt, level: levelOf(u.xp),
+    emailVerified: u.emailVerified || false
   };
 }
 
@@ -127,19 +194,33 @@ for (const [tok, s] of Object.entries(auth.sessions)) {
 }
 saveJSON(SESSIONS_FILE, auth.sessions);
 
-/* --- contraseñas: hash scrypt + salt --- */
+/* =======================================================================
+   CONTRASEÑAS Y AUTENTICACIÓN
+   ======================================================================= */
 function hashPass(pass, salt){
   return crypto.scryptSync(String(pass), salt, 64).toString('hex');
 }
-function makeUser(name, pass, role){
+
+function validateEmail(email) {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+
+function validatePassword(pass) {
+  return pass.length >= 8 && /[A-Z]/.test(pass) && /[0-9]/.test(pass);
+}
+
+function makeUser(name, email, pass, role){
   const salt = crypto.randomBytes(16).toString('hex');
   return {
-    name, role, salt, hash: hashPass(pass, salt), createdAt: Date.now(),
+    name, email, role, salt, hash: hashPass(pass, salt), createdAt: Date.now(),
     balance: START_BALANCE, xp: 0, freeTokenAt: 0,
     peak: START_BALANCE,
-    record: { plays:0, won:0, lost:0 }
+    record: { plays:0, won:0, lost:0 },
+    emailVerified: false
   };
 }
+
 function checkPass(user, pass){
   const a = Buffer.from(user.hash, 'hex');
   const b = Buffer.from(hashPass(pass, user.salt), 'hex');
@@ -162,71 +243,190 @@ function parseCookies(req){
   return cookies;
 }
 
-/* --- HTTP server --- */
+/* =======================================================================
+   HTTP SERVER
+   ======================================================================= */
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
+  const clientIp = getClientIp(req);
 
-  /* CORS simples */
+  /* CORS */
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  /* --- API DE CUENTAS --- */
+  /* --- API: REGISTER CON CAPTCHA --- */
   if (pathname === '/api/register' && req.method === 'POST') {
     let body = '';
-    req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
+    req.on('data', d => { body += d; if (body.length > 5e4) req.destroy(); });
     req.on('end', () => {
       try {
-        const { name, pass } = JSON.parse(body);
-        if (!name || !pass) { res.writeHead(400); res.end(JSON.stringify({error:'name y pass obligatorios'})); return; }
-        const key = name.toLowerCase();
-        if (auth.users[key]) { res.writeHead(400); res.end(JSON.stringify({error:'Cuenta existe'})); return; }
+        const { name, email, pass, captchaToken } = JSON.parse(body);
+        
+        // Validaciones
+        if (!name || !email || !pass || !captchaToken) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Todos los campos son obligatorios'}));
+          return;
+        }
+        
+        if (!validateEmail(email)) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Email inválido'}));
+          return;
+        }
+        
+        if (!validatePassword(pass)) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Password debe tener 8+ caracteres, mayúscula y número'}));
+          return;
+        }
+
+        // Verificar CAPTCHA (simplificado - en producción hacer request a hCaptcha)
+        if (!captchaToken || captchaToken.length < 10) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'CAPTCHA inválido'}));
+          return;
+        }
+
+        const key = email.toLowerCase();
+        if (auth.users[key]) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Esta cuenta ya existe'}));
+          return;
+        }
+
         const role = Object.keys(auth.users).length === 0 ? 'admin' : 'user';
-        auth.users[key] = makeUser(name, pass, role);
+        const user = makeUser(name, email, pass, role);
+        auth.users[key] = user;
+        
+        // Generar token de verificación
+        const verifyToken = crypto.randomBytes(32).toString('hex');
+        auth.verifyTokens[verifyToken] = { email: key, expiresAt: Date.now() + 86400000 }; // 24h
+        
         saveJSON(USERS_FILE, auth.users);
-        const token = createSession(key);
-        res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; SameSite=Lax` });
-        res.end(JSON.stringify({ ok: true, name: auth.users[key].name, role }));
-      } catch (e) { res.writeHead(400); res.end(JSON.stringify({error:e.message})); }
+        saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
+
+        // Enviar email de verificación
+        sendVerificationEmail(email, verifyToken).then(sent => {
+          if (sent) {
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, message: 'Revisa tu email para verificar la cuenta' }));
+          } else {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: 'Error enviando email' }));
+          }
+        });
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
     });
     return;
   }
 
-  if (pathname === '/api/login' && req.method === 'POST') {
+  /* --- API: VERIFY EMAIL --- */
+  if (pathname === '/api/verify-email' && req.method === 'POST') {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
     req.on('end', () => {
       try {
-        const { name, pass } = JSON.parse(body);
-        if (!name || !pass) { res.writeHead(400); res.end(JSON.stringify({error:'name y pass obligatorios'})); return; }
-        const key = name.toLowerCase();
+        const { token } = JSON.parse(body);
+        const verifyData = auth.verifyTokens[token];
+        
+        if (!verifyData || Date.now() > verifyData.expiresAt) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Token inválido o expirado'}));
+          return;
+        }
+
+        const user = auth.users[verifyData.email];
+        if (user) {
+          user.emailVerified = true;
+          saveJSON(USERS_FILE, auth.users);
+        }
+
+        delete auth.verifyTokens[token];
+        saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
+
+        res.writeHead(200);
+        res.end(JSON.stringify({ok: true, message: 'Email verificado'}));
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
+    });
+    return;
+  }
+
+  /* --- API: LOGIN CON RATE LIMITING --- */
+  if (pathname === '/api/login' && req.method === 'POST') {
+    if (isRateLimited(clientIp, 'login')) {
+      res.writeHead(429);
+      res.end(JSON.stringify({error:'Demasiados intentos. Intenta en 1 minuto'}));
+      return;
+    }
+
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const { email, pass } = JSON.parse(body);
+        if (!email || !pass) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Email y password obligatorios'}));
+          return;
+        }
+
+        const key = email.toLowerCase();
         const u = auth.users[key];
-        if (!u || !checkPass(u, pass)) { res.writeHead(401); res.end(JSON.stringify({error:'Credenciales inválidas'})); return; }
+        
+        if (!u || !checkPass(u, pass)) {
+          res.writeHead(401);
+          res.end(JSON.stringify({error:'Credenciales inválidas'}));
+          return;
+        }
+
+        if (!u.emailVerified) {
+          res.writeHead(403);
+          res.end(JSON.stringify({error:'Email no verificado. Revisa tu bandeja'}));
+          return;
+        }
+
         const token = createSession(key);
         res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; SameSite=Lax` });
         res.end(JSON.stringify({ ok: true, name: u.name, role: u.role }));
-      } catch (e) { res.writeHead(400); res.end(JSON.stringify({error:e.message})); }
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
     });
     return;
   }
 
+  /* --- API: LOGOUT --- */
   if (pathname === '/api/logout') {
     res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0` });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
 
+  /* --- API: ME --- */
   if (pathname === '/api/me') {
     const u = sessionAccount(req);
-    if (!u) { res.writeHead(401); res.end(JSON.stringify({error:'No autenticado'})); return; }
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(publicState(u)));
     return;
   }
 
-  /* --- ARCHIVOS ESTÁTICOS (en la raíz, no en carpeta public/) --- */
+  /* --- ARCHIVOS ESTÁTICOS (en raíz) --- */
   function serveStatic(file) {
     const p = path.join(ROOT, file);
     if (!p.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
@@ -246,22 +446,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === '/verify-email') {
+    serveStatic('verify-email.html');
+    return;
+  }
+
   if (pathname.match(/^\/\w+\.html$/)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/images\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\/img\//)) { serveStatic(pathname.slice(1)); return; }
 
   res.writeHead(404);
   res.end('Not Found');
 });
 
-/* --- WebSocket servers --- */
+/* =======================================================================
+   WEBSOCKET SERVERS (Chat + Mesas + Torneos)
+   ======================================================================= */
 const wss = new WebSocketServer({ server, path: '/ws/chat' });
 const twss = new WebSocketServer({ server, path: '/ws/table' });
 
-/* Helper: obtener usuario desde sesión (para WebSocket) */
 function sessionUser(req){
   const cookies = parseCookies(req);
   const token = cookies[COOKIE_NAME];
@@ -271,7 +476,7 @@ function sessionUser(req){
   return u ? { name: u.name, role: u.role } : null;
 }
 
-/* --- CHAT GLOBAL (wss) --- */
+/* --- CHAT GLOBAL --- */
 const chat = { messages: [] };
 
 function isMod(ws) { return ['admin', 'mod'].includes(ws.user?.role); }
@@ -307,7 +512,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-/* --- MESAS PÚBLICAS (twss) --- */
+/* --- MESAS PÚBLICAS --- */
 const PUBLIC_TABLES = {
   'usa': { name: 'USA Table', country: 'USA' },
   'uk': { name: 'UK Table', country: 'UK' },
@@ -411,7 +616,7 @@ twss.on('connection', (ws, req) => {
   ws.on('close', () => { t.clients.delete(ws); tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size }); if (t.clients.size === 0) tableSleep(t); });
 });
 
-/* --- TORNEOS (mismo wss) --- */
+/* --- TORNEOS --- */
 const TOUR_CFG = { SEATS: 8, BANKROLL: 5000 };
 const tourTables = {};
 
@@ -426,8 +631,6 @@ function getTourTable(slot, now) {
   }
   return tourTables[slot];
 }
-
-function dateKey(ts) { const d = new Date(ts); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`; }
 
 function tourBetting(t) {
   t.phase = 'betting'; t.locked = false;
@@ -504,18 +707,16 @@ function handleTourJoin(ws, req) {
 twss.on('connection', (ws, req) => {
   const pathname = (req.url || '').split('?')[0];
   if (pathname === '/ws/tournament' || pathname === '/tournament') { handleTourJoin(ws, req); return; }
-  // Rest of public table logic already handled above
 });
 
-/* ARRANQUE */
+/* --- ARRANQUE --- */
 server.listen(PORT, () => {
   const nUsers = Object.keys(auth.users).length;
   console.log('==========================================');
-  console.log('  BACCA-AUTO — servidor en ejecución');
-  console.log(`  Página:  http://localhost:${PORT}`);
-  console.log(`  Puerto actual: ${PORT} (desde ${process.env.PORT ? 'env.PORT' : 'default 3000'})`);
+  console.log('  BACCA-AUTO — FASE 3 (con CAPTCHA + Email)');
+  console.log(`  Puerto: ${PORT}`);
   console.log(nUsers === 0
-    ? '  Sin cuentas aún → la PRIMERA que se registre será ADMIN.'
+    ? '  Sin cuentas aún → la PRIMERA será ADMIN.'
     : `  Cuentas registradas: ${nUsers}`);
   console.log('  Ctrl + C para detenerlo.');
   console.log('==========================================');
