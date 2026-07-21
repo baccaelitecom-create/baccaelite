@@ -408,10 +408,16 @@
           return showError(data.error || 'Registration failed.');
         }
 
-        showSuccess('✅ Account created! Check your email to verify.');
+        if (data.verifyUrl) {
+          showSuccess('✅ Account created! Click here to verify: ' + data.verifyUrl);
+        } else {
+          showSuccess('✅ Account created! Check your email to verify.');
+        }
         resetCaptcha();
         $('authForm').reset();
-        setTimeout(() => setMode('login'), 3000);
+        if (!data.verifyUrl) {
+          setTimeout(() => setMode('login'), 3000);
+        }
       } catch (err) {
         showError('Cannot reach server. Is node server.js running?');
       }

@@ -300,14 +300,17 @@ const server = http.createServer((req, res) => {
         saveJSON(USERS_FILE, auth.users);
         saveJSON(VERIFY_TOKENS_FILE, auth.verifyTokens);
 
+        const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${verifyToken}`;
+        
         sendVerificationEmail(email, verifyToken).then(sent => {
-          if (sent) {
-            res.writeHead(200);
-            res.end(JSON.stringify({ ok: true, message: 'Email enviado. Verifica tu bandeja.' }));
-          } else {
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: 'Error enviando email' }));
-          }
+          res.writeHead(200);
+          res.end(JSON.stringify({ 
+            ok: true, 
+            message: sent 
+              ? 'Email enviado. Verifica tu bandeja de entrada.' 
+              : 'Cuenta creada. Usa este link para verificar:',
+            verifyUrl: sent ? null : verifyUrl
+          }));
         });
       } catch (e) {
         res.writeHead(400);
