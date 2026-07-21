@@ -9,7 +9,9 @@ yarn.lock
 .env.*.local
 
 # Datos locales (la carpeta data/ con usuarios/sesiones)
-data/
+data/*.db
+data/sessions.json
+data/verify_tokens.json
 *.json.bak
 
 # Logs
