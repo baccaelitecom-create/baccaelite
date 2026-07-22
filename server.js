@@ -7,7 +7,8 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const {
   initDB, getUser, saveUser, userExists,
-  countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken
+  countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
+  saveSession, getSession, deleteSession, cleanOldSessions
 } = require('./db');
 
 const PORT = process.env.PORT || 3000;
@@ -81,7 +82,29 @@ function getClientIp(req) {
 const SESSION_DAYS = 30;
 const SESSION_MS   = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const COOKIE_NAME  = 'bacca_sid';
-const sessions     = {};
+
+function createSession(key){
+  const token = crypto.randomBytes(32).toString('hex');
+  saveSession(token, key);
+  return token;
+}
+
+function sessionAccount(req){
+  const token = parseCookies(req)[COOKIE_NAME];
+  if (!token) return null;
+  const s = getSession(token);
+  if (!s) return null;
+  if (Date.now() - s.created_at > SESSION_MS) {
+    deleteSession(token);
+    return null;
+  }
+  return getUser(s.user_key) || null;
+}
+
+function sessionUser(req){
+  const u = sessionAccount(req);
+  return u ? { name: u.name, role: u.role } : null;
+}
 
 // ECONOMIA
 const START_BALANCE = 1023;
@@ -116,6 +139,7 @@ function ensureEconomy(u){
 
 function publicState(u){
   return {
+    name: u.name, email: u.email, role: u.role,
     balance: u.balance, xp: u.xp, freeTokenAt: u.freeTokenAt,
     peak: u.peak, record: u.record, createdAt: u.createdAt, level: levelOf(u.xp),
     emailVerified: u.emailVerified || false
@@ -141,13 +165,6 @@ function applyHandToAccount(u, b, winner){
   if (net > 0) u.record.won++;
   else if (net < 0) u.record.lost++;
   return { net, xpGain, total, payout };
-}
-
-function sessionAccount(req){
-  const token = parseCookies(req)[COOKIE_NAME];
-  const s = token && sessions[token];
-  if (!s || Date.now() - s.ts > SESSION_MS) return null;
-  return getUser(s.key) || null;
 }
 
 // AUTH
@@ -179,12 +196,6 @@ function checkPass(user, pass){
   const a = Buffer.from(user.hash, 'hex');
   const b = Buffer.from(hashPass(pass, user.salt), 'hex');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
-function createSession(key){
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { key, ts: Date.now() };
-  return token;
 }
 
 function parseCookies(req){
@@ -342,6 +353,8 @@ const server = http.createServer((req, res) => {
 
   // LOGOUT
   if (pathname === '/api/logout') {
+    const token = parseCookies(req)[COOKIE_NAME];
+    if (token) deleteSession(token);
     res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0` });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -620,15 +633,6 @@ const server = http.createServer((req, res) => {
 // WEBSOCKET: CHAT GLOBAL
 const wss = new WebSocketServer({ server, path: '/ws/chat' });
 const chat = { messages: [] };
-
-function sessionUser(req){
-  const cookies = parseCookies(req);
-  const token = cookies[COOKIE_NAME];
-  const s = token && sessions[token];
-  if (!s || Date.now() - s.ts > SESSION_MS) return null;
-  const u = getUser(s.key);
-  return u ? { name: u.name, role: u.role } : null;
-}
 
 function isMod(ws) { return ['admin', 'mod'].includes(ws.user?.role); }
 function sysMessage(text) { chat.messages.push({ id: crypto.randomBytes(8).toString('hex'), sys: true, text, ts: Date.now() }); broadcast({ type: 'msg', msg: chat.messages[chat.messages.length - 1] }); }
