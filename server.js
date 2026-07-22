@@ -390,6 +390,53 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /* --- STATE (account info para account.html) --- */
+  if (pathname === '/api/state') {
+    const u = sessionAccount(req);
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
+    ensureEconomy(u);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      balance: u.balance,
+      xp: u.xp,
+      createdAt: u.createdAt,
+      record: u.record,
+      peak: u.peak,
+      level: levelOf(u.xp)
+    }));
+    return;
+  }
+
+  /* --- BALANCE RESET (reset a $1,023 si balance < $900) --- */
+  if (pathname === '/api/balance-reset' && req.method === 'POST') {
+    const u = sessionAccount(req);
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
+    ensureEconomy(u);
+    if (u.balance >= 900) {
+      res.writeHead(400);
+      res.end(JSON.stringify({error:'Balance debe estar bajo $900.00'}));
+      return;
+    }
+    u.balance = START_BALANCE;
+    u.peak = Math.max(u.peak, START_BALANCE);
+    saveUser(u.email.toLowerCase(), u);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      balance: u.balance,
+      message: 'Balance reset to $1,023.00'
+    }));
+    return;
+  }
+
   /* --- STATIC FILES --- */
   function serveStatic(file) {
     const p = path.join(ROOT, file);
@@ -589,7 +636,7 @@ twss.on('connection', (ws, req) => {
  server.listen(PORT, () => {
  const nUsers = countUsers();
  console.log('==========================================');
- console.log(' BACCA-AUTO — SQLite + Fase 3');
+ console.log(' BACCA-AUTO — SQLite + Fase 3 (TASK 1)');
  console.log(` Puerto: ${PORT}`);
  console.log(` URL: https://baccaelite-production.up.railway.app`);
  console.log(nUsers === 0
