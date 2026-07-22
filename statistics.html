@@ -207,5 +207,28 @@
   <script src="js/auth.js"></script>
   <script src="js/menu.js"></script>
   <script src="js/chat.js"></script>
-</body>
+  <script>
+  (async function loadStats(){
+    try {
+      const r = await fetch('/api/statistics');
+      if (!r.ok) return;
+      const d = await r.json();
+      const fmt = n => Number(n).toLocaleString('en-US');
+      const el = id => document.getElementById(id);
+      if (el('stUsers'))       el('stUsers').textContent       = fmt(d.registeredUsers);
+      if (el('stPeak'))        el('stPeak').textContent        = fmt(d.recordOnline);
+      if (el('stPeakWhen'))    el('stPeakWhen').textContent    = d.recordOnlineWhen;
+      if (el('stTourney'))     el('stTourney').textContent     = fmt(d.tournamentParticipants);
+      if (el('stHands'))       el('stHands').textContent       = fmt(d.handsDealt);
+      if (el('stLvl1'))        el('stLvl1').textContent        = fmt(d.levelDistribution.bronze);
+      if (el('stLvl2'))        el('stLvl2').textContent        = fmt(d.levelDistribution.silver);
+      if (el('stLvl3'))        el('stLvl3').textContent        = fmt(d.levelDistribution.gold);
+      if (el('stLvl4'))        el('stLvl4').textContent        = fmt(d.levelDistribution.platinum);
+      if (el('stLvl5'))        el('stLvl5').textContent        = fmt(d.levelDistribution.diamond);
+      if (el('stLvl6'))        el('stLvl6').textContent        = fmt(d.levelDistribution.elite);
+      if (el('stLvl7'))        el('stLvl7').textContent        = fmt(d.levelDistribution.stellar);
+      if (el('stLvl8'))        el('stLvl8').textContent        = fmt(d.levelDistribution.legend);
+    } catch(e) { /* sin servidor: quedan los valores demo */ }
+  })();
+  </script>
 </html>
