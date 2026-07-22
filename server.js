@@ -403,6 +403,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       balance: u.balance,
       xp: u.xp,
+      freeTokenAt: u.freeTokenAt,
       createdAt: u.createdAt,
       record: u.record,
       peak: u.peak,
