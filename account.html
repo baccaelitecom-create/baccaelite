@@ -327,6 +327,12 @@
             balance=s.balance;
             since=s.createdAt||null;
             record=s.record||null;
+            // Email real del usuario
+            if(s.email){
+              const verified = s.emailVerified
+                ? ' <span class="se-verified">✔ verified</span>' : '';
+              document.getElementById('seEmail').innerHTML = s.email + verified;
+            }
           }
         }catch(e){}
       }

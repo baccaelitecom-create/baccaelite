@@ -385,6 +385,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       name: u.name,
+      email: u.email,
+      emailVerified: u.emailVerified || false,
       balance: u.balance,
       xp: u.xp,
       freeTokenAt: u.freeTokenAt,
