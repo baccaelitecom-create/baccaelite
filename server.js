@@ -586,7 +586,6 @@ twss.on('connection', (ws, req) => {
    ======================================================================= */
 const { initDB } = require('./db');
 
-().then(() => {
   server.listen(PORT, () => {
     const nUsers = countUsers();
     console.log('==========================================');
@@ -599,4 +598,3 @@ const { initDB } = require('./db');
     console.log('  Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta'));
     console.log('==========================================');
   });
-});
