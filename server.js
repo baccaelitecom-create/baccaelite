@@ -5,7 +5,6 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-const nodemailer = require('nodemailer');
 const {
   initDB, getUser, saveUser, userExists,
   countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken
@@ -14,40 +13,39 @@ const {
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 
-// EMAIL CON GMAIL REAL - CONFIGURACION CORREGIDA
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD
-  }
-});
-
+// EMAIL CON RESEND API (HTTP - funciona en Railway)
 async function sendVerificationEmail(email, token) {
   const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${token}`;
-  
-  console.log('EMAIL Intentando enviar a:', email);
-  console.log('GMAIL_USER:', process.env.GMAIL_USER ? 'OK' : 'FALTA');
-  console.log('GMAIL_APP_PASSWORD:', process.env.GMAIL_APP_PASSWORD ? 'OK' : 'FALTA');
-  
+
   try {
-    await transporter.sendMail({
-      from: `BaccaElite <${process.env.GMAIL_USER}>`,
-      to: email,
-      subject: 'Verifica tu email en BaccaElite',
-      html: `
-        <div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
-          <h2>Bienvenido a BaccaElite!</h2>
-          <p>Para completar tu registro, verifica tu email:</p>
-          <p><a href="${verifyUrl}" style="background:#ffd61f;color:#001a4d;padding:12px 24px;text-decoration:none;border-radius:5px;font-weight:bold;">
-            Verificar Email
-          </a></p>
-          <p>O copia: <a href="${verifyUrl}">${verifyUrl}</a></p>
-        </div>
-      `
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'noreply@resend.dev',
+        to: email,
+        subject: 'Verifica tu email en BaccaElite',
+        html: `
+          <div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
+            <h2>Bienvenido a BaccaElite!</h2>
+            <p>Para completar tu registro, verifica tu email:</p>
+            <p><a href="${verifyUrl}" style="background:#ffd61f;color:#001a4d;padding:12px 24px;text-decoration:none;border-radius:5px;font-weight:bold;">
+              Verificar Email
+            </a></p>
+            <p>O copia: <a href="${verifyUrl}">${verifyUrl}</a></p>
+          </div>
+        `
+      })
     });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Resend API error: ${response.status} ${errText}`);
+    }
+
     console.log('EMAIL enviado a:', email);
     return true;
   } catch (e) {
