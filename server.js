@@ -487,60 +487,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- TOURNAMENTS (las 4 mesas diarias) --- */
-  if (pathname === '/api/tournaments') {
-    const u = sessionAccount(req);
-    if (!u) {
-      res.writeHead(401);
-      res.end(JSON.stringify({error:'No autenticado'}));
-      return;
-    }
-
-    const now = new Date();
-    const hours = now.getUTCHours();
-    
-    // Las 4 mesas abren cada 6 horas: 12 AM, 6 AM, 12 PM, 6 PM UTC
-    const schedules = [
-      { n: 1, time: '12:00 AM', hour: 0 },
-      { n: 2, time: '6:00 AM', hour: 6 },
-      { n: 3, time: '12:00 PM', hour: 12 },
-      { n: 4, time: '6:00 PM', hour: 18 }
-    ];
-
-    const tables = schedules.map(s => {
-      let state = 'soon';
-      if (hours >= s.hour && hours < s.hour + 6) {
-        state = 'open'; // Mesa activa ahora
-      } else if (hours >= s.hour + 6) {
-        state = 'closed'; // Mesa ya cerró hoy
-      }
-
-      return {
-        n: s.n,
-        time: s.time,
-        seats: Math.floor(Math.random() * 6) + 1,
-        max: 6,
-        state: state
-      };
-    });
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      tables: tables,
-      joinedSlot: null
-    }));
-    return;
-  }
-
-  /* --- TOURNAMENT WINNERS (ganadores últimos 7 días) --- */
-  if (pathname === '/api/tournament-winners') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      winners: []
-    }));
-    return;
-  }
-
   // STATIC FILES
   function serveStatic(file) {
     const p = path.join(ROOT, file);
