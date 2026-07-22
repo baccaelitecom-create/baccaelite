@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const nodemailer = require('nodemailer');
 const {
-  initDB, getUser, saveUser, getAllUsers, userExists,
+  initDB, getUser, saveUser, userExists,
   countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken
 } = require('./db');
 
