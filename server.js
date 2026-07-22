@@ -586,7 +586,7 @@ twss.on('connection', (ws, req) => {
    ======================================================================= */
 const { initDB } = require('./db');
 
-initDB().then(() => {
+().then(() => {
   server.listen(PORT, () => {
     const nUsers = countUsers();
     console.log('==========================================');
