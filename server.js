@@ -584,17 +584,18 @@ twss.on('connection', (ws, req) => {
 /* =======================================================================
    INICIO
    ======================================================================= */
-const { initDB } = require('./db');
 
-  server.listen(PORT, () => {
-    const nUsers = countUsers();
-    console.log('==========================================');
-    console.log('  BACCA-AUTO — SQLite + Fase 3');
-    console.log(`  Puerto: ${PORT}`);
-    console.log(`  URL: https://baccaelite-production.up.railway.app`);
-    console.log(nUsers === 0
-      ? '  Sin cuentas → la PRIMERA será ADMIN.'
-      : `  Cuentas en SQLite: ${nUsers}`);
-    console.log('  Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta'));
-    console.log('==========================================');
-  });
+   initDB().then(() => {
+ server.listen(PORT, () => {
+ const nUsers = countUsers();
+ console.log('==========================================');
+ console.log(' BACCA-AUTO — SQLite + Fase 3');
+ console.log(` Puerto: ${PORT}`);
+ console.log(` URL: https://baccaelite-production.up.railway.app`);
+ console.log(nUsers === 0
+ ? ' Sin cuentas → la PRIMERA será ADMIN.'
+ : ` Cuentas en SQLite: ${nUsers}`);
+ console.log(' Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta'));
+ console.log('==========================================');
+ });
+});
