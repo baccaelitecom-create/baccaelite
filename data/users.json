@@ -1,0 +1,42 @@
+{
+  "jasor": {
+    "name": "Jasor",
+    "role": "admin",
+    "salt": "9020efc98ecb51cb9a13c8d0e5f11abf",
+    "hash": "858828c6423626171f5cfd622f1973c10ac62a922fa8c8b0c9cac49478821c87185c67d8e351e140ba0f3773093ff5bae3318de0b582cb4d1c2215b6885be435",
+    "createdAt": 1784506009996,
+    "balance": 1156.25,
+    "xp": 1563,
+    "freeTokenAt": 1784510823178,
+    "record": {
+      "plays": 70,
+      "won": 29,
+      "lost": 35
+    },
+    "peak": 1156,
+    "tourneyToday": {
+      "date": "2026-07-20",
+      "slot": 3
+    }
+  },
+  "esme": {
+    "name": "Esme",
+    "role": "user",
+    "salt": "d52e4322680843d4d5d8f4deda0d86a2",
+    "hash": "c760be3fef45152b5e55d5f0e9f9d106e944ceb23e0074e2003a5db0fe66606ecb0e23ed9fe096d9154dfb5908bd092c087da943857f300237c924389f62d26f",
+    "createdAt": 1784506579708,
+    "balance": 1076.1,
+    "xp": 220,
+    "freeTokenAt": 1784534277149,
+    "record": {
+      "plays": 24,
+      "won": 10,
+      "lost": 13
+    },
+    "peak": 1076,
+    "tourneyToday": {
+      "date": "2026-07-20",
+      "slot": 3
+    }
+  }
+}
