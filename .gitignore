@@ -13,6 +13,8 @@ data/*.db
 data/sessions.json
 data/verify_tokens.json
 *.json.bak
+user.json
+sessions.json
 
 # Logs
 *.log
