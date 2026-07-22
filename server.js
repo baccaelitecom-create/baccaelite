@@ -1,11 +1,3 @@
-/* ==========================================================================
-   BACCA-AUTO — SERVIDOR CON SQLITE
-   - SQLite para persistencia real de datos
-   - Gmail para email verification  
-   - hCaptcha en registro
-   - Rate limiting en login
-   ========================================================================== */
-
 'use strict';
 
 const http   = require('http');
@@ -22,49 +14,49 @@ const {
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 
-/* =======================================================================
-   EMAIL CON GMAIL REAL
-   ======================================================================= */
+// EMAIL CON GMAIL REAL - CONFIGURACION CORREGIDA
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
   auth: {
-    user: process.env.GMAIL_USER || '',
-    pass: process.env.GMAIL_APP_PASSWORD || ''
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD
   }
 });
 
 async function sendVerificationEmail(email, token) {
   const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${token}`;
   
+  console.log('EMAIL Intentando enviar a:', email);
+  console.log('GMAIL_USER:', process.env.GMAIL_USER ? 'OK' : 'FALTA');
+  console.log('GMAIL_APP_PASSWORD:', process.env.GMAIL_APP_PASSWORD ? 'OK' : 'FALTA');
+  
   try {
     await transporter.sendMail({
       from: `BaccaElite <${process.env.GMAIL_USER}>`,
       to: email,
-      subject: '🎰 Verifica tu email en BaccaElite',
+      subject: 'Verifica tu email en BaccaElite',
       html: `
         <div style="font-family: Arial; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #001a4d;">¡Bienvenido a BaccaElite!</h2>
-          <p>Para completar tu registro, verifica tu email clickeando el link:</p>
+          <h2>Bienvenido a BaccaElite!</h2>
+          <p>Para completar tu registro, verifica tu email:</p>
           <p><a href="${verifyUrl}" style="background:#ffd61f;color:#001a4d;padding:12px 24px;text-decoration:none;border-radius:5px;font-weight:bold;">
             Verificar Email
           </a></p>
-          <p>O copia este link: <a href="${verifyUrl}">${verifyUrl}</a></p>
-          <p style="color:#666;font-size:12px;">Este link expira en 24 horas.</p>
-          <hr style="border:none;border-top:1px solid #ddd;margin:20px 0;">
-          <p style="color:#999;font-size:11px;">Free-to-play simulator for entertainment only. No real money gambling.</p>
+          <p>O copia: <a href="${verifyUrl}">${verifyUrl}</a></p>
         </div>
       `
     });
+    console.log('EMAIL enviado a:', email);
     return true;
   } catch (e) {
-    console.error('Email error:', e.message);
+    console.error('EMAIL ERROR:', e.message);
     return false;
   }
 }
 
-/* =======================================================================
-   RATE LIMITING
-   ======================================================================= */
+// RATE LIMITING
 const rateLimits = {};
 
 function isRateLimited(ip, action = 'login') {
@@ -87,17 +79,13 @@ function getClientIp(req) {
   return req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
 }
 
-/* =======================================================================
-   DATA - SQLite (persistencia real)
-   ======================================================================= */
+// DATA - SQLite
 const SESSION_DAYS = 30;
 const SESSION_MS   = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const COOKIE_NAME  = 'bacca_sid';
 const sessions     = {};
 
-/* =======================================================================
-   ECONOMÍA
-   ======================================================================= */
+// ECONOMIA
 const START_BALANCE = 1023;
 const toCents = n => Math.round(n * 100) / 100;
 
@@ -123,12 +111,10 @@ function ensureEconomy(u){
   if (!Number.isFinite(u.balance))     { u.balance = START_BALANCE; changed = true; }
   if (!Number.isFinite(u.xp))          { u.xp = 0; changed = true; }
   if (!Number.isFinite(u.freeTokenAt)) { u.freeTokenAt = 0; changed = true; }
-  if (!Number.isFinite(u.peak)) { u.peak = Math.max(u.balance, START_BALANCE); changed = true; }
+  if (!u.peak) { u.peak = Math.max(u.balance, START_BALANCE); changed = true; }
   if (!u.record) { u.record = { plays:0, won:0, lost:0 }; changed = true; }
   return changed;
 }
-
-// Migración manejada en db.js
 
 function publicState(u){
   return {
@@ -166,9 +152,7 @@ function sessionAccount(req){
   return getUser(s.key) || null;
 }
 
-/* =======================================================================
-   AUTH
-   ======================================================================= */
+// AUTH
 function hashPass(pass, salt){
   return crypto.scryptSync(String(pass), salt, 64).toString('hex');
 }
@@ -214,9 +198,7 @@ function parseCookies(req){
   return cookies;
 }
 
-/* =======================================================================
-   HTTP SERVER
-   ======================================================================= */
+// HTTP SERVER
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
@@ -227,7 +209,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  /* --- REGISTER --- */
+  // REGISTER
   if (pathname === '/api/register' && req.method === 'POST') {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 5e4) req.destroy(); });
@@ -243,13 +225,13 @@ const server = http.createServer((req, res) => {
         
         if (!validateEmail(email)) {
           res.writeHead(400);
-          res.end(JSON.stringify({error:'Email inválido'}));
+          res.end(JSON.stringify({error:'Email invalido'}));
           return;
         }
         
         if (!validatePassword(pass)) {
           res.writeHead(400);
-          res.end(JSON.stringify({error:'Password: 8+ caracteres, 1 mayúscula, 1 número'}));
+          res.end(JSON.stringify({error:'Password: 8+ caracteres, 1 mayuscula, 1 numero'}));
           return;
         }
 
@@ -273,14 +255,11 @@ const server = http.createServer((req, res) => {
         const verifyToken = crypto.randomBytes(32).toString('hex');
         saveVerifyToken(verifyToken, key, Date.now() + 86400000);
 
-        const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${verifyToken}`;
-
         sendVerificationEmail(email, verifyToken).then(sent => {
           res.writeHead(200);
           res.end(JSON.stringify({ 
             ok: true, 
-            message: sent ? 'Email enviado. Verifica tu bandeja.' : 'Cuenta creada. Verifica con este link:',
-            verifyUrl: sent ? null : verifyUrl
+            message: sent ? 'Email enviado. Verifica tu bandeja.' : 'Error al enviar email.'
           }));
         });
       } catch (e) {
@@ -291,7 +270,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- VERIFY EMAIL --- */
+  // VERIFY EMAIL
   if (pathname === '/api/verify-email' && req.method === 'POST') {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
@@ -302,7 +281,7 @@ const server = http.createServer((req, res) => {
         
         if (!verifyData || Date.now() > verifyData.expires_at) {
           res.writeHead(400);
-          res.end(JSON.stringify({error:'Token inválido'}));
+          res.end(JSON.stringify({error:'Token invalido'}));
           return;
         }
 
@@ -324,7 +303,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- LOGIN CON RATE LIMITING --- */
+  // LOGIN CON RATE LIMITING
   if (pathname === '/api/login' && req.method === 'POST') {
     if (isRateLimited(clientIp, 'login')) {
       res.writeHead(429);
@@ -348,16 +327,9 @@ const server = http.createServer((req, res) => {
         
         if (!u || !checkPass(u, pass)) {
           res.writeHead(401);
-          res.end(JSON.stringify({error:'Credenciales inválidas'}));
+          res.end(JSON.stringify({error:'Credenciales invalidas'}));
           return;
         }
-
-        // Email verification temporalmente desactivado
-        // if (!u.emailVerified) {
-        //   res.writeHead(403);
-        //   res.end(JSON.stringify({error:'Email no verificado'}));
-        //   return;
-        // }
 
         const token = createSession(key);
         res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; SameSite=Lax` });
@@ -370,14 +342,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- LOGOUT --- */
+  // LOGOUT
   if (pathname === '/api/logout') {
     res.writeHead(200, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0` });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
 
-  /* --- ME --- */
+  // ME
   if (pathname === '/api/me') {
     const u = sessionAccount(req);
     if (!u) {
@@ -390,7 +362,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- STATE (account info para account.html) --- */
+  // STATE
   if (pathname === '/api/state') {
     const u = sessionAccount(req);
     if (!u) {
@@ -412,7 +384,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- HAND RESULT (reporte de mana: guarda balance+XP) --- */
+  // HAND RESULT
   if (pathname === '/api/hand-result' && req.method === 'POST') {
     const u = sessionAccount(req);
     if (!u) {
@@ -450,7 +422,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- FREE TOKEN (reclama bono diario) --- */
+  // FREE TOKEN
   if (pathname === '/api/free-token' && req.method === 'POST') {
     const u = sessionAccount(req);
     if (!u) {
@@ -491,7 +463,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  /* --- BALANCE RESET (reset a $1,023 si balance < $900) --- */
+  // BALANCE RESET
   if (pathname === '/api/balance-reset' && req.method === 'POST') {
     const u = sessionAccount(req);
     if (!u) {
@@ -502,7 +474,7 @@ const server = http.createServer((req, res) => {
     ensureEconomy(u);
     if (u.balance >= 900) {
       res.writeHead(400);
-      res.end(JSON.stringify({error:'Balance debe estar bajo $900.00'}));
+      res.end(JSON.stringify({error:'Balance debe estar bajo 900.00'}));
       return;
     }
     u.balance = START_BALANCE;
@@ -512,12 +484,12 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       balance: u.balance,
-      message: 'Balance reset to $1,023.00'
+      message: 'Balance reset to 1023.00'
     }));
     return;
   }
 
-  /* --- STATIC FILES --- */
+  // STATIC FILES
   function serveStatic(file) {
     const p = path.join(ROOT, file);
     if (!p.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
@@ -552,9 +524,7 @@ const server = http.createServer((req, res) => {
   res.end('Not Found');
 });
 
-/* =======================================================================
-   WEBSOCKET: CHAT GLOBAL
-   ======================================================================= */
+// WEBSOCKET: CHAT GLOBAL
 const wss = new WebSocketServer({ server, path: '/ws/chat' });
 const chat = { messages: [] };
 
@@ -573,9 +543,9 @@ function broadcast(data) { wss.clients.forEach(c => { if (c.readyState === 1) c.
 
 wss.on('connection', (ws, req) => {
   const su = sessionUser(req);
-  if (!su) { ws.close(4001, 'Inicia sesión primero.'); return; }
+  if (!su) { ws.close(4001, 'Inicia sesion primero.'); return; }
   ws.user = su;
-  sysMessage(`👋 ${su.name} se unió.`);
+  sysMessage(`Bienvenido ${su.name}`);
   broadcast({ type: 'online', n: wss.clients.size });
   ws.send(JSON.stringify({ type: 'history', messages: chat.messages.slice(-50) }));
 
@@ -596,26 +566,19 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     broadcast({ type: 'online', n: wss.clients.size });
-    sysMessage(`👋 ${ws.user.name} salió.`);
+    sysMessage(`Usuario salio.`);
   });
 });
 
-/* =======================================================================
-   WEBSOCKET: MESAS PÚBLICAS
-   ======================================================================= */
+// WEBSOCKET: MESAS PUBLICAS
 const twss = new WebSocketServer({ server, path: '/ws/table' });
 
 const PUBLIC_TABLES = {
   'usa': { name: 'USA Table', country: 'USA' },
   'uk': { name: 'UK Table', country: 'UK' },
-  'españa': { name: 'Spain Table', country: 'Spain' },
+  'espana': { name: 'Spain Table', country: 'Spain' },
   'mexico': { name: 'Mexico Table', country: 'Mexico' },
-  'brasil': { name: 'Brazil Table', country: 'Brazil' },
-  'argentina': { name: 'Argentina Table', country: 'Argentina' },
-  'colombia': { name: 'Colombia Table', country: 'Colombia' },
-  'perú': { name: 'Peru Table', country: 'Peru' },
-  'venezuela': { name: 'Venezuela Table', country: 'Venezuela' },
-  'chile': { name: 'Chile Table', country: 'Chile' }
+  'brasil': { name: 'Brazil Table', country: 'Brazil' }
 };
 
 const tables = {};
@@ -688,14 +651,14 @@ function validTableBets(u, bets) {
 
 twss.on('connection', (ws, req) => {
   const su = sessionUser(req);
-  if (!su) { ws.close(4001, 'Inicia sesión primero.'); return; }
+  if (!su) { ws.close(4001, 'Inicia sesion primero.'); return; }
   const q = (req.url || '').split('?')[1] || '';
   const key = new URLSearchParams(q).get('key');
   if (!PUBLIC_TABLES[key]) { ws.close(4002, 'Mesa desconocida.'); return; }
   const t = getTable(key);
   if (t.clients.size >= 10) { ws.close(4003, 'Mesa llena.'); return; }
   const accKey = su.name.toLowerCase();
-  for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás en esta mesa.'); return; }
+  for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estas en esta mesa.'); return; }
   ws.user = su; ws.accKey = accKey;
   ws.tableBets = { PLAYER: 0, BANKER: 0, TIE: 0 };
   t.clients.add(ws);
@@ -708,21 +671,16 @@ twss.on('connection', (ws, req) => {
   ws.on('close', () => { t.clients.delete(ws); tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size }); if (t.clients.size === 0) tableSleep(t); });
 });
 
-/* =======================================================================
-   INICIO
-   ======================================================================= */
-
-   initDB().then(() => {
- server.listen(PORT, () => {
- const nUsers = countUsers();
- console.log('==========================================');
- console.log(' BACCA-AUTO — SQLite + Fase 3 (TASK 1)');
- console.log(` Puerto: ${PORT}`);
- console.log(` URL: https://baccaelite-production.up.railway.app`);
- console.log(nUsers === 0
- ? ' Sin cuentas → la PRIMERA será ADMIN.'
- : ` Cuentas en SQLite: ${nUsers}`);
- console.log(' Gmail: ' + (process.env.GMAIL_USER ? '✅ Configurado' : '❌ Falta'));
- console.log('==========================================');
- });
+// INICIO
+initDB().then(() => {
+  server.listen(PORT, () => {
+    const nUsers = countUsers();
+    console.log('==========================================');
+    console.log(' BACCA-AUTO SQLite + Fase 3');
+    console.log(` Puerto: ${PORT}`);
+    console.log(` URL: https://baccaelite-production.up.railway.app`);
+    console.log(nUsers === 0 ? ' Sin cuentas' : ` Cuentas: ${nUsers}`);
+    console.log(' Gmail: ' + (process.env.GMAIL_USER ? 'OK' : 'FALTA'));
+    console.log('==========================================');
+  });
 });
