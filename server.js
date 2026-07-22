@@ -411,6 +411,85 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /* --- HAND RESULT (reporte de mana: guarda balance+XP) --- */
+  if (pathname === '/api/hand-result' && req.method === 'POST') {
+    const u = sessionAccount(req);
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
+    
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const { bets, winner } = JSON.parse(body);
+        if (!bets || !winner) {
+          res.writeHead(400);
+          res.end(JSON.stringify({error:'Bets y winner requeridos'}));
+          return;
+        }
+        
+        ensureEconomy(u);
+        const result = applyHandToAccount(u, bets, winner);
+        saveUser(u.email.toLowerCase(), u);
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          balance: u.balance,
+          xp: u.xp,
+          result: result
+        }));
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({error:e.message}));
+      }
+    });
+    return;
+  }
+
+  /* --- FREE TOKEN (reclama bono diario) --- */
+  if (pathname === '/api/free-token' && req.method === 'POST') {
+    const u = sessionAccount(req);
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
+    
+    ensureEconomy(u);
+    const now = Date.now();
+    const lastClaimTime = u.freeTokenAt || 0;
+    const FREE_TOKEN_MS = 24 * 60 * 60 * 1000;
+    
+    if (now < lastClaimTime + FREE_TOKEN_MS) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'Free token already claimed',
+        freeTokenAt: lastClaimTime
+      }));
+      return;
+    }
+    
+    const level = levelOf(u.xp);
+    const bonus = level.bonus;
+    
+    u.balance = toCents(u.balance + bonus);
+    u.freeTokenAt = now;
+    saveUser(u.email.toLowerCase(), u);
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      balance: u.balance,
+      xp: u.xp,
+      bonus: bonus,
+      freeTokenAt: now
+    }));
+    return;
+  }
+
   /* --- BALANCE RESET (reset a $1,023 si balance < $900) --- */
   if (pathname === '/api/balance-reset' && req.method === 'POST') {
     const u = sessionAccount(req);
