@@ -46,6 +46,11 @@ async function initDB() {
       email_key  TEXT NOT NULL,
       expires_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token      TEXT PRIMARY KEY,
+      user_key   TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   // Migrar desde users.json si tabla vacía
@@ -166,8 +171,39 @@ function deleteVerifyToken(token) {
   saveDB();
 }
 
+/* -----------------------------------------------------------------------
+   SESIONES PERSISTENTES
+   ----------------------------------------------------------------------- */
+function saveSession(token, userKey) {
+  db.run('INSERT OR REPLACE INTO sessions (token,user_key,created_at) VALUES (?,?,?)',
+    [token, userKey, Date.now()]);
+  saveDB();
+}
+
+function getSession(token) {
+  const res = db.exec('SELECT * FROM sessions WHERE token = ?', [token]);
+  if (!res[0]) return null;
+  const cols = res[0].columns;
+  const vals = res[0].values[0];
+  const row = {};
+  cols.forEach((c, i) => row[c] = vals[i]);
+  return row;
+}
+
+function deleteSession(token) {
+  db.run('DELETE FROM sessions WHERE token = ?', [token]);
+  saveDB();
+}
+
+function cleanOldSessions(maxAgeMs) {
+  const cutoff = Date.now() - maxAgeMs;
+  db.run('DELETE FROM sessions WHERE created_at < ?', [cutoff]);
+  saveDB();
+}
+
 module.exports = {
   initDB,
   getUser, saveUser, userExists, countUsers,
-  saveVerifyToken, getVerifyToken, deleteVerifyToken
+  saveVerifyToken, getVerifyToken, deleteVerifyToken,
+  saveSession, getSession, deleteSession, cleanOldSessions
 };
