@@ -25,7 +25,7 @@ async function sendVerificationEmail(email, token) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'noreply@resend.dev',
+        from: 'noreply@baccaelite.com',
         to: email,
         subject: 'Verifica tu email en BaccaElite',
         html: `
