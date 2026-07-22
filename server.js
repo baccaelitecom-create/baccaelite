@@ -668,7 +668,7 @@ wss.on('connection', (ws, req) => {
 });
 
 // WEBSOCKET: MESAS PUBLICAS
-const twss = new WebSocketServer({ server, path: '/ws/table' });
+const twss = new WebSocketServer({ server, path: '/table' });
 
 const PUBLIC_TABLES = {
   'australia':   { name: 'Australia Table',   country: 'Australia'   },
@@ -771,6 +771,66 @@ twss.on('connection', (ws, req) => {
     try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const u = getUser(ws.accKey); if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } } catch (e) { }
   });
   ws.on('close', () => { t.clients.delete(ws); tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size }); if (t.clients.size === 0) tableSleep(t); });
+});
+
+/* ======================================================================= */
+/* WEBSOCKET: TORNEOS — path /tournament?slot=1..4                         */
+/* ======================================================================= */
+const tourneyTables = { 1: null, 2: null, 3: null, 4: null };
+
+function getTourneyTable(slot) {
+  if (!tourneyTables[slot]) {
+    tourneyTables[slot] = {
+      clients: new Set(), engine: { shoeNo: 1, shoe: { cards: [] } },
+      phase: 'sleeping', locked: false, hand: 0, results: []
+    };
+    initShoe(tourneyTables[slot].engine);
+  }
+  return tourneyTables[slot];
+}
+
+const twss2 = new WebSocketServer({ server, path: '/tournament' });
+
+twss2.on('connection', (ws, req) => {
+  const su = sessionUser(req);
+  if (!su) { ws.close(4001, 'Inicia sesion primero.'); return; }
+
+  const q = (req.url || '').split('?')[1] || '';
+  const slot = parseInt(new URLSearchParams(q).get('slot'));
+  if (![1,2,3,4].includes(slot)) { ws.close(4002, 'Mesa desconocida.'); return; }
+
+  const t = getTourneyTable(slot);
+  if (t.clients.size >= 6) { ws.close(4003, 'Mesa llena.'); return; }
+
+  const accKey = su.name.toLowerCase();
+  for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás en esta mesa.'); return; }
+
+  ws.user = su; ws.accKey = accKey;
+  ws.tableBets = { PLAYER: 0, BANKER: 0, TIE: 0 };
+  t.clients.add(ws);
+
+  tSend(ws, { t: 'init', key: 'tournament-'+slot, name: 'Tournament Table #'+slot,
+    phase: t.phase, secs: 0, hand: t.hand, results: t.results.slice(-50),
+    players: tSeatNames(t), n: t.clients.size });
+  tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size });
+
+  if (t.phase === 'sleeping') { tableBetting(t); }
+
+  ws.on('message', raw => {
+    try {
+      const ev = JSON.parse(raw);
+      if (ev.t === 'bets') {
+        const u = getUser(ws.accKey);
+        if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } }
+      }
+    } catch (e) {}
+  });
+
+  ws.on('close', () => {
+    t.clients.delete(ws);
+    tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size });
+    if (t.clients.size === 0) tableSleep(t);
+  });
 });
 
 // INICIO
