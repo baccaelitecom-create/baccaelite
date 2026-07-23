@@ -463,6 +463,7 @@ const server = http.createServer((req, res) => {
     const bonus = level.bonus;
     
     u.balance = toCents(u.balance + bonus);
+    u.peak = toCents(Math.max(u.peak, u.balance)); // no genera XP
     u.freeTokenAt = now;
     saveUser(u.email.toLowerCase(), u);
     
