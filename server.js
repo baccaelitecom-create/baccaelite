@@ -155,12 +155,11 @@ function applyHandToAccount(u, b, winner){
   else                          payout = b.TIE * 9 + b.PLAYER + b.BANKER;
   const net = toCents(payout - total);
   u.balance = toCents(u.balance - total + payout);
+  // XP: $1 ganado = 1 XP, simple
   let xpGain = 0;
-  const above = toCents(u.balance - u.peak);
-  if (above >= 1) {
-    xpGain = Math.floor(above);
-    u.xp  += xpGain;
-    u.peak = toCents(u.peak + xpGain);
+  if (net > 0) {
+    xpGain = Math.floor(net);
+    u.xp += xpGain;
   }
   u.record.plays++;
   if (net > 0) u.record.won++;
