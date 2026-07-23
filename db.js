@@ -54,6 +54,7 @@ async function initDB() {
       created_at     INTEGER NOT NULL,
       balance        REAL NOT NULL DEFAULT 1023,
       xp             INTEGER NOT NULL DEFAULT 0,
+      net_profit     REAL NOT NULL DEFAULT 0,
       peak           REAL NOT NULL DEFAULT 1023,
       free_token_at  INTEGER NOT NULL DEFAULT 0,
       plays          INTEGER NOT NULL DEFAULT 0,
@@ -80,6 +81,17 @@ async function initDB() {
       peak_users INTEGER NOT NULL DEFAULT 0
     );
   `);
+
+  // Migración: agregar net_profit a bases de datos creadas antes de este campo
+  try {
+    const cols = db.exec('PRAGMA table_info(users)')[0].values.map(v => v[1]);
+    if (!cols.includes('net_profit')) {
+      db.run('ALTER TABLE users ADD COLUMN net_profit REAL NOT NULL DEFAULT 0');
+      db.run('UPDATE users SET net_profit = xp');
+    }
+  } catch (e) {
+    console.error('❌ Error migración net_profit:', e.message);
+  }
 
   // ✨ Inicializar estadísticas del servidor
   const statsRes = db.exec('SELECT COUNT(*) FROM server_stats WHERE key = "server"');
@@ -156,7 +168,7 @@ function rowToUser(row) {
   return {
     name: row.name, email: row.email, role: row.role,
     salt: row.salt, hash: row.hash, createdAt: row.created_at,
-    balance: row.balance, xp: row.xp, peak: row.peak,
+    balance: row.balance, xp: row.xp, netProfit: row.net_profit, peak: row.peak,
     freeTokenAt: row.free_token_at,
     emailVerified: row.email_verified === 1,
     record: { plays: row.plays, won: row.won, lost: row.lost },
@@ -183,18 +195,18 @@ function saveUser(key, u) {
   try {
     db.run(`
       INSERT INTO users
-      (key,name,email,role,salt,hash,created_at,balance,xp,peak,
+      (key,name,email,role,salt,hash,created_at,balance,xp,net_profit,peak,
        free_token_at,plays,won,lost,email_verified,tourney_date,tourney_slot)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(key) DO UPDATE SET
         name=excluded.name, email=excluded.email, role=excluded.role,
-        balance=excluded.balance, xp=excluded.xp, peak=excluded.peak,
+        balance=excluded.balance, xp=excluded.xp, net_profit=excluded.net_profit, peak=excluded.peak,
         free_token_at=excluded.free_token_at, plays=excluded.plays,
         won=excluded.won, lost=excluded.lost,
         email_verified=excluded.email_verified,
         tourney_date=excluded.tourney_date, tourney_slot=excluded.tourney_slot`,
       [key, u.name, u.email||null, u.role||'user', u.salt, u.hash,
-       u.createdAt||Date.now(), u.balance, u.xp, u.peak,
+       u.createdAt||Date.now(), u.balance, u.xp, u.netProfit||0, u.peak,
        u.freeTokenAt||0, u.record?.plays||0, u.record?.won||0,
        u.record?.lost||0, u.emailVerified?1:0,
        u.tourneyToday?.date||null, u.tourneyToday?.slot||null]
