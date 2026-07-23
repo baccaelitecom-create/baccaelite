@@ -4,11 +4,12 @@ const fs   = require('fs');
 const path = require('path');
 const initSqlJs = require('sql.js');
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE  = path.join(DATA_DIR, 'baccaelite.db');
 const DB_BACKUP = path.join(DATA_DIR, 'baccaelite.backup.db');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
+console.log(`📂 DATA_DIR = ${DATA_DIR}`);
 
 let db;
 let autoSaveTimer = null;
@@ -19,6 +20,7 @@ async function initDB() {
   // 🔄 Intentar cargar desde backup si está corrupto
   let fileBuffer = null;
   if (fs.existsSync(DB_FILE)) {
+    console.log(`📦 Encontrado ${DB_FILE} — cargando datos existentes`);
     try {
       fileBuffer = fs.readFileSync(DB_FILE);
       db = new SQL.Database(fileBuffer);
@@ -40,6 +42,7 @@ async function initDB() {
       }
     }
   } else {
+    console.log(`🆕 No existe ${DB_FILE} — creando base de datos nueva (vacía)`);
     db = new SQL.Database();
   }
 
