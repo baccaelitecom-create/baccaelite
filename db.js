@@ -201,9 +201,15 @@ function cleanOldSessions(maxAgeMs) {
   saveDB();
 }
 
+function verifyAllUsers() {
+  db.run('UPDATE users SET email_verified = 1 WHERE email_verified = 0');
+  saveDB();
+}
+
 module.exports = {
   initDB,
   getUser, saveUser, userExists, countUsers,
   saveVerifyToken, getVerifyToken, deleteVerifyToken,
-  saveSession, getSession, deleteSession, cleanOldSessions
+  saveSession, getSession, deleteSession, cleanOldSessions,
+  verifyAllUsers
 };

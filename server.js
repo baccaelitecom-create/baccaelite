@@ -8,7 +8,8 @@ const { WebSocketServer } = require('ws');
 const {
   initDB, getUser, saveUser, userExists,
   countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
-  saveSession, getSession, deleteSession, cleanOldSessions
+  saveSession, getSession, deleteSession, cleanOldSessions,
+  verifyAllUsers
 } = require('./db');
 
 const PORT = process.env.PORT || 3000;
@@ -296,7 +297,7 @@ const server = http.createServer((req, res) => {
 
         const user = getUser(verifyData.email_key);
         if (user) {
-          user.emailVerified = true;
+          user.emailVerified = false;
           saveUser(verifyData.email_key, user);
         }
 
@@ -337,6 +338,12 @@ const server = http.createServer((req, res) => {
         if (!u || !checkPass(u, pass)) {
           res.writeHead(401);
           res.end(JSON.stringify({error:'Credenciales invalidas'}));
+          return;
+        }
+
+        if (!u.emailVerified) {
+          res.writeHead(403);
+          res.end(JSON.stringify({error:'Email no verificado. Revisa tu bandeja de entrada.'}));
           return;
         }
 
@@ -595,6 +602,25 @@ const server = http.createServer((req, res) => {
         legend:   0
       }
     }));
+    return;
+  }
+
+  /* --- ADMIN: VERIFICAR TODOS LOS USUARIOS (endpoint temporal) --- */
+  if (pathname === '/api/admin/verify-all' && req.method === 'POST') {
+    const u = sessionAccount(req);
+    if (!u || u.role !== 'admin') {
+      res.writeHead(403);
+      res.end(JSON.stringify({error:'Solo admin'}));
+      return;
+    }
+    try {
+      verifyAllUsers();
+      res.writeHead(200);
+      res.end(JSON.stringify({ok: true, message: 'Todos los usuarios marcados como verificados'}));
+    } catch(e) {
+      res.writeHead(500);
+      res.end(JSON.stringify({error: e.message}));
+    }
     return;
   }
 
