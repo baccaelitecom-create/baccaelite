@@ -296,7 +296,7 @@ const server = http.createServer((req, res) => {
 
         const user = getUser(verifyData.email_key);
         if (user) {
-          user.emailVerified = false;
+          user.emailVerified = true;
           saveUser(verifyData.email_key, user);
         }
 
