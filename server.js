@@ -148,6 +148,7 @@ function publicState(u){
 }
 
 function applyHandToAccount(u, b, winner){
+  const balanceBefore = toCents(u.balance);
   const total = toCents(b.PLAYER + b.BANKER + b.TIE);
   let payout = 0;
   if      (winner === 'PLAYER') payout = b.PLAYER * 2;
@@ -155,10 +156,11 @@ function applyHandToAccount(u, b, winner){
   else                          payout = b.TIE * 9 + b.PLAYER + b.BANKER;
   const net = toCents(payout - total);
   u.balance = toCents(u.balance - total + payout);
-  // XP: $1 ganado = 1 XP, simple
+  // XP: diferencia real del balance (cuánto subió)
   let xpGain = 0;
-  if (net > 0) {
-    xpGain = Math.floor(net);
+  const balanceDiff = toCents(u.balance - balanceBefore);
+  if (balanceDiff > 0) {
+    xpGain = Math.floor(balanceDiff);
     u.xp += xpGain;
   }
   u.record.plays++;
@@ -296,7 +298,7 @@ const server = http.createServer((req, res) => {
 
         const user = getUser(verifyData.email_key);
         if (user) {
-          user.emailVerified = true;
+          user.emailVerified = false;
           saveUser(verifyData.email_key, user);
         }
 
