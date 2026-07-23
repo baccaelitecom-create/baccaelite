@@ -215,6 +215,7 @@
       const d = await r.json();
       const fmt = n => Number(n).toLocaleString('en-US');
       const el = id => document.getElementById(id);
+      if (el('stSince'))       el('stSince').textContent       = d.since;
       if (el('stUsers'))       el('stUsers').textContent       = fmt(d.registeredUsers);
       if (el('stPeak'))        el('stPeak').textContent        = fmt(d.recordOnline);
       if (el('stPeakWhen'))    el('stPeakWhen').textContent    = d.recordOnlineWhen;
@@ -231,4 +232,5 @@
     } catch(e) { /* sin servidor: quedan los valores demo */ }
   })();
   </script>
+</body>
 </html>

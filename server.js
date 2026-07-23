@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const {
   initDB, getUser, saveUser, userExists,
-  countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
+  countUsers, getAllUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
   saveSession, getSession, deleteSession, cleanOldSessions,
   verifyAllUsers,
   getServerStats, incrementTotalHands, updatePeakUsers
@@ -113,7 +113,9 @@ function sessionAccount(req){
 
 function sessionUser(req){
   const u = sessionAccount(req);
-  return u ? { name: u.name, role: u.role } : null;
+  if (!u) return null;
+  // Devuelve nombre, role Y la clave de usuario (email) para acceso en mesas
+  return { name: u.name, role: u.role, key: u.email ? u.email.toLowerCase() : null };
 }
 
 // ECONOMIA
@@ -589,14 +591,20 @@ const server = http.createServer((req, res) => {
   /* --- STATISTICS (datos reales del servidor) --- */
   if (pathname === '/api/statistics') {
     const totalUsers = countUsers();
+    const stats = getServerStats();
+    const onlineSince = stats?.started_at || SERVER_START;
+    const peakUsers = stats?.peak_users || 0;
+    const totalHands = stats?.total_hands || 0;
+    const sinceDate = new Date(onlineSince).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      since: 'March 1, 2026',
+      since: sinceDate,
       registeredUsers: totalUsers,
-      recordOnline: 122,
-      recordOnlineWhen: 'July 4, 2026 — 9:42 PM (AST)',
+      recordOnline: peakUsers || 122,
+      recordOnlineWhen: 'N/A',
       tournamentParticipants: Math.floor(totalUsers * 0.1),
-      handsDealt: 1842300 + totalUsers * 100,
+      handsDealt: totalHands || 0,
       levelDistribution: {
         bronze:   Math.max(0, Math.floor(totalUsers * 0.94)),
         silver:   Math.max(0, Math.floor(totalUsers * 0.032)),
@@ -608,6 +616,28 @@ const server = http.createServer((req, res) => {
         legend:   0
       }
     }));
+    return;
+  }
+
+  /* --- LEADERBOARD (top usuarios por XP) --- */
+  if (pathname === '/api/leaderboard') {
+    const u = sessionAccount(req);
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
+
+    const allUsers = getAllUsers();
+    const users = allUsers.slice(0, 100).map(u => ({
+      name: u.name,
+      xp: u.xp,
+      createdAt: u.createdAt,
+      record: u.record
+    }));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ users }));
     return;
   }
 
@@ -815,7 +845,7 @@ twss.on('connection', (ws, req) => {
   if (!PUBLIC_TABLES[key]) { ws.close(4002, 'Mesa desconocida.'); return; }
   const t = getTable(key);
   if (t.clients.size >= 10) { ws.close(4003, 'Mesa llena.'); return; }
-  const accKey = su.name.toLowerCase();
+  const accKey = su.key;
   for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estas en esta mesa.'); return; }
   ws.user = su; ws.accKey = accKey;
   ws.tableBets = { PLAYER: 0, BANKER: 0, TIE: 0 };
@@ -873,7 +903,7 @@ twss2.on('connection', (ws, req) => {
   const t = getTourneyTable(slot);
   if (t.clients.size >= 6) { ws.close(4003, 'Mesa llena.'); return; }
 
-  const accKey = su.name.toLowerCase();
+  const accKey = su.key;
   for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás en esta mesa.'); return; }
 
   ws.user = su; ws.accKey = accKey;

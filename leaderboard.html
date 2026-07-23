@@ -227,12 +227,9 @@
 
   <script>
   /* ===================================================================
-     LEADERBOARD — performance first: one render pass, one shared modal,
-     event delegation (a single click listener for the whole list).
-     DEMO_PLAYERS is demo data; FASE 2 replaces it with server data.
-     winPct:null means the player keeps it private (default).
+     LEADERBOARD — loads real data from /api/leaderboard, sorted by XP
      =================================================================== */
-  (function initLeaderboard(){
+  (async function initLeaderboard(){
     const LEVELS=[
       {name:'Bronze',xp:0},{name:'Silver',xp:1e4},{name:'Gold',xp:1e5},
       {name:'Platinum',xp:1e6},{name:'Diamond',xp:1e7},{name:'Elite',xp:1e8},
@@ -240,22 +237,23 @@
     ];
     const levelOf=xp=>{let l=LEVELS[0];for(const lv of LEVELS){if(xp>=lv.xp)l=lv;}return l.name;};
 
-    const DEMO_PLAYERS=[
-      {name:'Jasor',      xp:8000,     since:'April 22, 2026',  winPct:53.33},
-      {name:'BaccQueen',  xp:1250000,  since:'March 3, 2026',   winPct:49.8},
-      {name:'DragonTiger',xp:940000,   since:'March 1, 2026',   winPct:null},
-      {name:'LuckySeven', xp:410000,   since:'March 15, 2026',  winPct:51.2},
-      {name:'ShoeReader', xp:98000,    since:'April 2, 2026',   winPct:null},
-      {name:'MartinGale', xp:76000,    since:'March 22, 2026',  winPct:null},
-      {name:'FibonacciFan',xp:35500,   since:'May 9, 2026',     winPct:48.9},
-      {name:'ParoliPro',  xp:22100,    since:'May 30, 2026',    winPct:null},
-      {name:'TieHunter',  xp:15800,    since:'June 6, 2026',    winPct:null},
-      {name:'NaturalNine',xp:9400,     since:'June 21, 2026',   winPct:null}
-    ];
+    let list=[];
+    try {
+      const r=await fetch('/api/leaderboard');
+      if(r.ok){
+        const d=await r.json();
+        list=d.users.map(u=>({
+          name:u.name,
+          xp:u.xp,
+          since:new Date(u.createdAt).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}),
+          winPct:u.record?.plays>0?((u.record.won/u.record.plays)*100):null
+        }));
+      }
+    }catch(e){console.error('Error loading leaderboard:',e);}
 
-    const list=[...DEMO_PLAYERS].sort((a,b)=>b.xp-a.xp);
     const wrap=document.getElementById('lbWrap');
     if(!wrap)return;
+    if(list.length===0){wrap.innerHTML='<p style="color:#00223a;font-size:14px;">No hay usuarios en el ranking aún.</p>';return;}
 
     wrap.innerHTML=list.map((p,i)=>{
       const rank=i+1;
@@ -281,7 +279,7 @@
       document.getElementById('lbCardXp').textContent=p.xp.toLocaleString('en-US');
       document.getElementById('lbCardSince').textContent=p.since;
       document.getElementById('lbCardWin').textContent=
-        p.winPct==null?'Private':p.winPct.toFixed(2)+'%';
+        p.winPct==null?'Private':(p.winPct.toFixed(2)+'%');
       overlay.classList.remove('hidden');
     });
     document.getElementById('lbCloseBtn').onclick=()=>overlay.classList.add('hidden');

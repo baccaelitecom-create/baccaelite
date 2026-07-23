@@ -358,9 +358,26 @@ function updatePeakUsers(n) {
   }
 }
 
+function getAllUsers() {
+  try {
+    const res = db.exec('SELECT * FROM users ORDER BY xp DESC');
+    if (!res[0]) return [];
+    const cols = res[0].columns;
+    const users = res[0].values.map(vals => {
+      const row = {};
+      cols.forEach((c, i) => row[c] = vals[i]);
+      return rowToUser(row);
+    });
+    return users;
+  } catch (e) {
+    console.error('❌ Error getAllUsers:', e.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDB,
-  getUser, saveUser, userExists, countUsers,
+  getUser, saveUser, userExists, countUsers, getAllUsers,
   saveVerifyToken, getVerifyToken, deleteVerifyToken,
   saveSession, getSession, deleteSession, cleanOldSessions,
   verifyAllUsers,
