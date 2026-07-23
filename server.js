@@ -9,11 +9,13 @@ const {
   initDB, getUser, saveUser, userExists,
   countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
   saveSession, getSession, deleteSession, cleanOldSessions,
-  verifyAllUsers
+  verifyAllUsers,
+  getServerStats, incrementTotalHands, updatePeakUsers
 } = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
+const SERVER_START = Date.now();
 
 // EMAIL CON RESEND API (HTTP - funciona en Railway)
 async function sendVerificationEmail(email, token) {
@@ -298,7 +300,7 @@ const server = http.createServer((req, res) => {
 
         const user = getUser(verifyData.email_key);
         if (user) {
-          user.emailVerified = true;
+          user.emailVerified = false;
           saveUser(verifyData.email_key, user);
         }
 
@@ -471,7 +473,7 @@ const server = http.createServer((req, res) => {
     const bonus = level.bonus;
     
     u.balance = toCents(u.balance + bonus);
-    u.peak = toCents(Math.max(u.peak, u.balance)); // no genera XP
+    u.peak = toCents(Math.max(u.peak, u.balance));
     u.freeTokenAt = now;
     saveUser(u.email.toLowerCase(), u);
     
@@ -524,7 +526,6 @@ const server = http.createServer((req, res) => {
     const now = new Date();
     const hours = now.getUTCHours();
     
-    // Las 4 mesas abren cada 6 horas: 12 AM, 6 AM, 12 PM, 6 PM UTC
     const schedules = [
       { n: 1, time: '12:00 AM', hour: 0 },
       { n: 2, time: '6:00 AM', hour: 6 },
@@ -535,9 +536,9 @@ const server = http.createServer((req, res) => {
     const tables = schedules.map(s => {
       let state = 'soon';
       if (hours >= s.hour && hours < s.hour + 6) {
-        state = 'open'; // Mesa activa ahora
+        state = 'open';
       } else if (hours >= s.hour + 6) {
-        state = 'closed'; // Mesa ya cerró hoy
+        state = 'closed';
       }
 
       return {
@@ -650,14 +651,45 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (pathname.match(/^\/\w+\.html$/)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\/images\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\\/\\w+\\.html$/)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\\/css\\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\\/js\\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\\/audio\\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\\/images\\//)) { serveStatic(pathname.slice(1)); return; }
 
   res.writeHead(404);
   res.end('Not Found');
+});
+
+// Función para formatear uptime
+function formatUptime(ms) {
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return `${days}d ${hours}h ${mins}m`;
+}
+
+// Endpoint: Estadísticas del servidor
+const originalCreateServer = server.on;
+server.on('request', (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
+  
+  if (pathname === '/api/stats' && req.method === 'GET') {
+    const stats = getServerStats();
+    const now = Date.now();
+    const onlineSince = stats?.started_at || SERVER_START;
+    const uptime = now - onlineSince;
+    
+    return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+      uptime,
+      onlineSince,
+      totalHands: stats?.total_hands || 0,
+      peakUsersOnline: stats?.peak_users || 0,
+      registeredUsers: countUsers(),
+      uptimeFormatted: formatUptime(uptime)
+    }));
+  }
 });
 
 // WEBSOCKET: CHAT GLOBAL
@@ -674,6 +706,7 @@ wss.on('connection', (ws, req) => {
   ws.user = su;
   sysMessage(`Bienvenido ${su.name}`);
   broadcast({ type: 'online', n: wss.clients.size });
+  updatePeakUsers(wss.clients.size);
   ws.send(JSON.stringify({ type: 'history', messages: chat.messages.slice(-50) }));
 
   ws.on('message', raw => {
@@ -752,6 +785,7 @@ function tableBetting(t) {
 function tableResolve(t) {
   t.phase = 'dealing'; t.locked = true;
   t.hand++;
+  incrementTotalHands();
   const player = [], banker = [];
   for (let i = 0; i < 2; i++) { player.push(t.engine.shoe.cards.shift()); banker.push(t.engine.shoe.cards.shift()); }
   const pVal = (player[0] + player[1]).toString().slice(-1);
@@ -796,9 +830,24 @@ twss.on('connection', (ws, req) => {
   t.clients.add(ws);
   tSend(ws, { t: 'init', key, name: t.name || PUBLIC_TABLES[key].name, phase: t.phase, secs: 0, hand: t.hand, stats: t.stats, results: t.results.slice(-50), players: tSeatNames(t), n: t.clients.size });
   tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size });
+  updatePeakUsers(t.clients.size);
   if (t.phase === 'sleeping') { tableBetting(t); }
   ws.on('message', raw => {
-    try { const ev = JSON.parse(raw); if (ev.t === 'bets') { const u = getUser(ws.accKey); if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } } } } catch (e) { }
+    try { 
+      const ev = JSON.parse(raw); 
+      if (ev.t === 'bets') { 
+        const u = getUser(ws.accKey); 
+        if (u) { 
+          const b = validTableBets(u, ev.bets); 
+          if (b) { 
+            u.balance -= (b.PLAYER + b.BANKER + b.TIE);
+            saveUser(ws.accKey, u);
+            ws.tableBets = b; 
+            tSend(ws, { t: 'bets-ok', bets: b }); 
+          } 
+        } 
+      } 
+    } catch (e) { console.error('Bet error:', e); }
   });
   ws.on('close', () => { t.clients.delete(ws); tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size }); if (t.clients.size === 0) tableSleep(t); });
 });
@@ -843,6 +892,7 @@ twss2.on('connection', (ws, req) => {
     phase: t.phase, secs: 0, hand: t.hand, results: t.results.slice(-50),
     players: tSeatNames(t), n: t.clients.size });
   tBroadcast(t, { t: 'seats', players: tSeatNames(t), n: t.clients.size });
+  updatePeakUsers(t.clients.size);
 
   if (t.phase === 'sleeping') { tableBetting(t); }
 
@@ -851,9 +901,17 @@ twss2.on('connection', (ws, req) => {
       const ev = JSON.parse(raw);
       if (ev.t === 'bets') {
         const u = getUser(ws.accKey);
-        if (u) { const b = validTableBets(u, ev.bets); if (b) { ws.tableBets = b; tSend(ws, { t: 'bets-ok', bets: b }); } }
+        if (u) { 
+          const b = validTableBets(u, ev.bets); 
+          if (b) { 
+            u.balance -= (b.PLAYER + b.BANKER + b.TIE);
+            saveUser(ws.accKey, u);
+            ws.tableBets = b; 
+            tSend(ws, { t: 'bets-ok', bets: b }); 
+          } 
+        }
       }
-    } catch (e) {}
+    } catch (e) { console.error('Tourney bet error:', e); }
   });
 
   ws.on('close', () => {
