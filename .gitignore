@@ -9,9 +9,9 @@ yarn.lock
 .env.*.local
 
 # Datos locales (la carpeta data/ con usuarios/sesiones)
-data/*.db
-data/sessions.json
-data/verify_tokens.json
+# IMPORTANTE: ignora la carpeta completa, no los archivos dentro
+# Esto evita que Railway sobrescriba el volumen en cada redeploy
+/data/
 *.json.bak
 user.json
 sessions.json
