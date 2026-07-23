@@ -17,6 +17,13 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const SERVER_START = Date.now();
 
+function formatUptime(ms) {
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return `${days}d ${hours}h ${mins}m`;
+}
+
 // EMAIL CON RESEND API (HTTP - funciona en Railway)
 async function sendVerificationEmail(email, token) {
   const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${token}`;
@@ -300,7 +307,7 @@ const server = http.createServer((req, res) => {
 
         const user = getUser(verifyData.email_key);
         if (user) {
-          user.emailVerified = false;
+          user.emailVerified = true;
           saveUser(verifyData.email_key, user);
         }
 
@@ -626,6 +633,25 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /* --- SERVER STATS --- */
+  if (pathname === '/api/stats' && req.method === 'GET') {
+    const stats = getServerStats();
+    const now = Date.now();
+    const onlineSince = stats?.started_at || SERVER_START;
+    const uptime = now - onlineSince;
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      uptime,
+      onlineSince,
+      totalHands: stats?.total_hands || 0,
+      peakUsersOnline: stats?.peak_users || 0,
+      registeredUsers: countUsers(),
+      uptimeFormatted: formatUptime(uptime)
+    }));
+    return;
+  }
+
   // STATIC FILES
   function serveStatic(file) {
     const p = path.join(ROOT, file);
@@ -651,45 +677,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (pathname.match(/^\\/\\w+\\.html$/)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/css\\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/js\\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/audio\\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/images\\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/\w+\.html$/)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/images\//)) { serveStatic(pathname.slice(1)); return; }
 
   res.writeHead(404);
   res.end('Not Found');
-});
-
-// Función para formatear uptime
-function formatUptime(ms) {
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  return `${days}d ${hours}h ${mins}m`;
-}
-
-// Endpoint: Estadísticas del servidor
-const originalCreateServer = server.on;
-server.on('request', (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = url.pathname;
-  
-  if (pathname === '/api/stats' && req.method === 'GET') {
-    const stats = getServerStats();
-    const now = Date.now();
-    const onlineSince = stats?.started_at || SERVER_START;
-    const uptime = now - onlineSince;
-    
-    return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-      uptime,
-      onlineSince,
-      totalHands: stats?.total_hands || 0,
-      peakUsersOnline: stats?.peak_users || 0,
-      registeredUsers: countUsers(),
-      uptimeFormatted: formatUptime(uptime)
-    }));
-  }
 });
 
 // WEBSOCKET: CHAT GLOBAL
