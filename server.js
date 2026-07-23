@@ -141,6 +141,7 @@ function ensureEconomy(u){
   let changed = false;
   if (!Number.isFinite(u.balance))     { u.balance = START_BALANCE; changed = true; }
   if (!Number.isFinite(u.xp))          { u.xp = 0; changed = true; }
+  if (!Number.isFinite(u.netProfit))   { u.netProfit = u.xp; changed = true; }
   if (!Number.isFinite(u.freeTokenAt)) { u.freeTokenAt = 0; changed = true; }
   if (!u.peak) { u.peak = Math.max(u.balance, START_BALANCE); changed = true; }
   if (!u.record) { u.record = { plays:0, won:0, lost:0 }; changed = true; }
@@ -157,7 +158,6 @@ function publicState(u){
 }
 
 function applyHandToAccount(u, b, winner){
-  const balanceBefore = toCents(u.balance);
   const total = toCents(b.PLAYER + b.BANKER + b.TIE);
   let payout = 0;
   if      (winner === 'PLAYER') payout = b.PLAYER * 2;
@@ -165,13 +165,13 @@ function applyHandToAccount(u, b, winner){
   else                          payout = b.TIE * 9 + b.PLAYER + b.BANKER;
   const net = toCents(payout - total);
   u.balance = toCents(u.balance - total + payout);
-  // XP: diferencia real del balance (cuánto subió)
-  let xpGain = 0;
-  const balanceDiff = toCents(u.balance - balanceBefore);
-  if (balanceDiff > 0) {
-    xpGain = Math.floor(balanceDiff);
-    u.xp += xpGain;
-  }
+  // XP: ganancia neta acumulada real (sube y baja con las manos, nunca se cuenta
+  // dos veces una recuperación tipo martingala como si fuera ganancia nueva)
+  const baseline = Number.isFinite(u.netProfit) ? u.netProfit : (u.xp || 0);
+  u.netProfit = toCents(baseline + net);
+  const newXp = Math.max(0, Math.floor(u.netProfit));
+  const xpGain = newXp - u.xp;
+  u.xp = newXp;
   u.record.plays++;
   if (net > 0) u.record.won++;
   else if (net < 0) u.record.lost++;
@@ -196,7 +196,7 @@ function makeUser(name, email, pass, role){
   const salt = crypto.randomBytes(16).toString('hex');
   return {
     name, email, role, salt, hash: hashPass(pass, salt), createdAt: Date.now(),
-    balance: START_BALANCE, xp: 0, freeTokenAt: 0,
+    balance: START_BALANCE, xp: 0, netProfit: 0, freeTokenAt: 0,
     peak: START_BALANCE,
     record: { plays:0, won:0, lost:0 },
     emailVerified: false
