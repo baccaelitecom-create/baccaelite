@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const {
   initDB, getUser, saveUser, userExists,
-  countUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
+  countUsers, getAllUsers, saveVerifyToken, getVerifyToken, deleteVerifyToken,
   saveSession, getSession, deleteSession, cleanOldSessions,
   verifyAllUsers,
   getServerStats, incrementTotalHands, updatePeakUsers
@@ -17,9 +17,20 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const SERVER_START = Date.now();
 
-// EMAIL CON RESEND API (HTTP - funciona en Railway)
+function formatUptime(ms) {
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return `${days}d ${hours}h ${mins}m`;
+}
+
+// EMAIL CON RESEND API
 async function sendVerificationEmail(email, token) {
-  const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-prod.fly.dev'}/verify-email?token=${token}`;
+  if (!process.env.APP_URL) {
+    console.error('❌ APP_URL no configurada');
+    return false;
+  }
+  const verifyUrl = `${process.env.APP_URL}/verify-email?token=${token}`;
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -106,7 +117,9 @@ function sessionAccount(req){
 
 function sessionUser(req){
   const u = sessionAccount(req);
-  return u ? { name: u.name, role: u.role } : null;
+  if (!u) return null;
+  // Devuelve nombre, role Y la clave de usuario (email) para acceso en mesas
+  return { name: u.name, role: u.role, key: u.email ? u.email.toLowerCase() : null };
 }
 
 // ECONOMIA
@@ -150,7 +163,6 @@ function publicState(u){
 }
 
 function applyHandToAccount(u, b, winner){
-  const balanceBefore = toCents(u.balance);
   const total = toCents(b.PLAYER + b.BANKER + b.TIE);
   let payout = 0;
   if      (winner === 'PLAYER') payout = b.PLAYER * 2;
@@ -158,13 +170,11 @@ function applyHandToAccount(u, b, winner){
   else                          payout = b.TIE * 9 + b.PLAYER + b.BANKER;
   const net = toCents(payout - total);
   u.balance = toCents(u.balance - total + payout);
-  // XP: diferencia real del balance (cuánto subió)
-  let xpGain = 0;
-  const balanceDiff = toCents(u.balance - balanceBefore);
-  if (balanceDiff > 0) {
-    xpGain = Math.floor(balanceDiff);
-    u.xp += xpGain;
-  }
+  // XP: se gana $1 de XP por cada $1 ganado en esta mano. Las pérdidas nunca
+  // restan XP — el XP es permanente, solo sube, sin importar cuánto baje el
+  // balance antes o después.
+  const xpGain = Math.max(0, Math.floor(net));
+  u.xp += xpGain;
   u.record.plays++;
   if (net > 0) u.record.won++;
   else if (net < 0) u.record.lost++;
@@ -585,14 +595,20 @@ const server = http.createServer((req, res) => {
   /* --- STATISTICS (datos reales del servidor) --- */
   if (pathname === '/api/statistics') {
     const totalUsers = countUsers();
+    const stats = getServerStats();
+    const onlineSince = stats?.started_at || SERVER_START;
+    const peakUsers = stats?.peak_users || 0;
+    const totalHands = stats?.total_hands || 0;
+    const sinceDate = new Date(onlineSince).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      since: 'March 1, 2026',
+      since: sinceDate,
       registeredUsers: totalUsers,
-      recordOnline: 122,
-      recordOnlineWhen: 'July 4, 2026 — 9:42 PM (AST)',
+      recordOnline: peakUsers || 122,
+      recordOnlineWhen: 'N/A',
       tournamentParticipants: Math.floor(totalUsers * 0.1),
-      handsDealt: 1842300 + totalUsers * 100,
+      handsDealt: totalHands || 0,
       levelDistribution: {
         bronze:   Math.max(0, Math.floor(totalUsers * 0.94)),
         silver:   Math.max(0, Math.floor(totalUsers * 0.032)),
@@ -604,6 +620,28 @@ const server = http.createServer((req, res) => {
         legend:   0
       }
     }));
+    return;
+  }
+
+  /* --- LEADERBOARD (top usuarios por XP) --- */
+  if (pathname === '/api/leaderboard') {
+    const u = sessionAccount(req);
+    if (!u) {
+      res.writeHead(401);
+      res.end(JSON.stringify({error:'No autenticado'}));
+      return;
+    }
+
+    const allUsers = getAllUsers();
+    const users = allUsers.slice(0, 100).map(u => ({
+      name: u.name,
+      xp: u.xp,
+      createdAt: u.createdAt,
+      record: u.record
+    }));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ users }));
     return;
   }
 
@@ -623,6 +661,25 @@ const server = http.createServer((req, res) => {
       res.writeHead(500);
       res.end(JSON.stringify({error: e.message}));
     }
+    return;
+  }
+
+  /* --- SERVER STATS --- */
+  if (pathname === '/api/stats' && req.method === 'GET') {
+    const stats = getServerStats();
+    const now = Date.now();
+    const onlineSince = stats?.started_at || SERVER_START;
+    const uptime = now - onlineSince;
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      uptime,
+      onlineSince,
+      totalHands: stats?.total_hands || 0,
+      peakUsersOnline: stats?.peak_users || 0,
+      registeredUsers: countUsers(),
+      uptimeFormatted: formatUptime(uptime)
+    }));
     return;
   }
 
@@ -651,7 +708,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (pathname.match(/^\/[\w-]+\.html$/)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/\w+\.html$/)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
   if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
@@ -659,37 +716,6 @@ const server = http.createServer((req, res) => {
 
   res.writeHead(404);
   res.end('Not Found');
-});
-
-// Función para formatear uptime
-function formatUptime(ms) {
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  return `${days}d ${hours}h ${mins}m`;
-}
-
-// Endpoint: Estadísticas del servidor
-const originalCreateServer = server.on;
-server.on('request', (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = url.pathname;
-  
-  if (pathname === '/api/stats' && req.method === 'GET') {
-    const stats = getServerStats();
-    const now = Date.now();
-    const onlineSince = stats?.started_at || SERVER_START;
-    const uptime = now - onlineSince;
-    
-    return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-      uptime,
-      onlineSince,
-      totalHands: stats?.total_hands || 0,
-      peakUsersOnline: stats?.peak_users || 0,
-      registeredUsers: countUsers(),
-      uptimeFormatted: formatUptime(uptime)
-    }));
-  }
 });
 
 // WEBSOCKET: CHAT GLOBAL
@@ -823,7 +849,7 @@ twss.on('connection', (ws, req) => {
   if (!PUBLIC_TABLES[key]) { ws.close(4002, 'Mesa desconocida.'); return; }
   const t = getTable(key);
   if (t.clients.size >= 10) { ws.close(4003, 'Mesa llena.'); return; }
-  const accKey = su.name.toLowerCase();
+  const accKey = su.key;
   for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estas en esta mesa.'); return; }
   ws.user = su; ws.accKey = accKey;
   ws.tableBets = { PLAYER: 0, BANKER: 0, TIE: 0 };
@@ -881,7 +907,7 @@ twss2.on('connection', (ws, req) => {
   const t = getTourneyTable(slot);
   if (t.clients.size >= 6) { ws.close(4003, 'Mesa llena.'); return; }
 
-  const accKey = su.name.toLowerCase();
+  const accKey = su.key;
   for (const c of t.clients) if (c.accKey === accKey) { ws.close(4004, 'Ya estás en esta mesa.'); return; }
 
   ws.user = su; ws.accKey = accKey;
@@ -926,11 +952,15 @@ initDB().then(() => {
   server.listen(PORT, () => {
     const nUsers = countUsers();
     console.log('==========================================');
-    console.log(' BACCA-AUTO Fly.io + MongoDB');
-    console.log(` Puerto: ${PORT}`);
-    console.log(` URL: https://baccaelite-prod.fly.dev`);
-    console.log(nUsers === 0 ? ' Sin cuentas' : ` Cuentas: ${nUsers}`);
-    console.log(' Gmail: ' + (process.env.GMAIL_USER ? 'OK' : 'FALTA'));
+    console.log(' 🎰 BACCAELITE - MongoDB + Fly.io');
+    console.log(` 🚀 Puerto: ${PORT}`);
+    console.log(` 🌐 URL: ${process.env.APP_URL || 'N/A'}`);
+    console.log(nUsers === 0 ? ' 📊 Sin cuentas' : ` 📊 Cuentas: ${nUsers}`);
+    console.log(' 📧 Resend: ' + (process.env.RESEND_API_KEY ? '✅' : '❌'));
+    console.log(' 🗄️  MongoDB: ✅');
     console.log('==========================================');
   });
+}).catch(e => {
+  console.error('❌ FATAL: No se pudo inicializar la BD:', e.message);
+  process.exit(1);
 });
