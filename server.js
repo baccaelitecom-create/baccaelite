@@ -19,7 +19,7 @@ const SERVER_START = Date.now();
 
 // EMAIL CON RESEND API (HTTP - funciona en Railway)
 async function sendVerificationEmail(email, token) {
-  const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-production.up.railway.app'}/verify-email?token=${token}`;
+  const verifyUrl = `${process.env.APP_URL || 'https://baccaelite-prod.fly.dev'}/verify-email?token=${token}`;
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -651,11 +651,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (pathname.match(/^\\/\\w+\\.html$/)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/css\\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/js\\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/audio\\//)) { serveStatic(pathname.slice(1)); return; }
-  if (pathname.match(/^\\/images\\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/[\w-]+\.html$/)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/css\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/js\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/audio\//)) { serveStatic(pathname.slice(1)); return; }
+  if (pathname.match(/^\/images\//)) { serveStatic(pathname.slice(1)); return; }
 
   res.writeHead(404);
   res.end('Not Found');
@@ -926,9 +926,9 @@ initDB().then(() => {
   server.listen(PORT, () => {
     const nUsers = countUsers();
     console.log('==========================================');
-    console.log(' BACCA-AUTO SQLite + Fase 3');
+    console.log(' BACCA-AUTO Fly.io + MongoDB');
     console.log(` Puerto: ${PORT}`);
-    console.log(` URL: https://baccaelite-production.up.railway.app`);
+    console.log(` URL: https://baccaelite-prod.fly.dev`);
     console.log(nUsers === 0 ? ' Sin cuentas' : ` Cuentas: ${nUsers}`);
     console.log(' Gmail: ' + (process.env.GMAIL_USER ? 'OK' : 'FALTA'));
     console.log('==========================================');
